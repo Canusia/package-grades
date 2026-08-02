@@ -1,0 +1,13 @@
+include README.md
+recursive-include grades/forms *
+recursive-include grades/management *
+recursive-include grades/reports *
+recursive-include grades/services *
+recursive-include grades/settings *
+recursive-include grades/tests *
+recursive-include grades/urls *
+recursive-include grades/views *
+recursive-include grades/templates *
+recursive-include grades/static *
+global-exclude *.py[cod]
+global-exclude __pycache__/*

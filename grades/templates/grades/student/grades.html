@@ -1,0 +1,37 @@
+{% extends "student/base_student.html" %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{MYCE_SETTINGS.college_name}} {{MYCE_SETTINGS.cep_name}} Classes{% endblock %}
+
+{% block page_header %}
+{{intro|safe}}
+{% include "student/partials/_breadcrumb.html" with page_name="My Courses" %}
+{% endblock %}
+
+{% block content %}
+<div class="card bg-white">
+    <div class="card-body pt-3">
+        <div class="mb-3">
+            <a class="btn btn-primary" href="{% url 'student:download_transcript' %}">
+                <i class="fa fa-download"></i>&nbsp; Download Unofficial Transcript
+            </a>
+        </div>
+        <div class="table-responsive">
+            <table style="width: 100%" class="table dataTable table-striped" id="student_class_registrations">
+                <thead>
+                    <tr>
+                        <th data-name='class_section.term.code' data-data='class_section.term.code'>Term</th>
+                        <th data-data='class_section.class_number' data-name='class_section.class_number'>Course / Section No.</th>
+                        <th data-data="class_section.tuition" data-name="class_section.tuition">Tuition</th>
+                        <th data-data="status_pretty" data-name="status_pretty">Status</th>
+                        <th data-data="submitted_grade" data-name="submitted_grade">Submitted Grade</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="{% static 'grades/student/js/grades.js' %}"></script>
+{% endblock %}

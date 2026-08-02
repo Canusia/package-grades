@@ -1,0 +1,35 @@
+{% extends "instructor/base_instructor.html" %}
+{% load static %}
+
+{% block title %}Grades{% endblock %}
+
+{% block page_header %}
+{{intro|safe}}
+{% include "instructor/partials/_breadcrumb.html" with page_name="Class Grades" %}
+{% endblock %}
+
+{% block content %}
+<!-- Configuration data for JavaScript -->
+<div id="grades-config"
+     data-classes-api="{{classes_api}}"
+     style="display: none;"></div>
+
+<div class="card">
+    <div class="card-body">
+        {{grades_intro|safe}}
+        <table id="records_classes" class="table table-striped responsive" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th data-data="term.code" data-name="term.code">Term</th>
+                    <th data-data="course.title" data-name="course.title">Course</th>
+                    <th data-name="class_number" data-data="class_number">CRN</th>
+                    <th data-name="grade_status" data-data="grade_status">Grades Status</th>
+                    <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+        </table>
+    </div>
+</div>
+
+<script src="{% static 'grades/instructor/js/grades.js' %}"></script>
+{% endblock %}

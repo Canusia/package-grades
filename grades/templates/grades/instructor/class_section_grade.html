@@ -1,0 +1,180 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Instructor Class Details{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+{% block body %}
+<main>
+    {{intro|safe}}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'instructor:dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'instructor:grades' %}">All Classes</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{class_section}}</li>
+        </ol>
+    </nav>
+    <div class="row">
+        <div class="col-12">
+            {% if messages %}
+            <ul class="messages list-group mb-4">
+                {% for message in messages %}
+                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                    {{ message }}</li>
+                    {% endfor %}
+            </ul>
+            {% endif %}
+            <style>
+                div.cell div.info {
+                    font-size: 1.1em;
+                }
+
+                div.cell div.label {
+                    text-transform: uppercase;
+                    font-size: 0.7em;
+                    font-weight: 100;
+                }
+            </style>
+            <div class="row">
+                <div class="col-md-5">
+                    <div class="card">
+                        <div class="card-header"><h3>Class Details</h3></div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.term}}</div>
+                                        <div class="label">Term</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.course}}</div>
+                                        <div class="label">Course</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.class_number}}</div>
+                                        <div class="label">Class #</div>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.highschool}}</div>
+                                        <div class="label">High School</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-7">
+                    
+                    <div class="tab-content">
+
+                        {% if not is_open %}
+                        <div class="" id="class_grades">
+                            <div class="card">
+                                <div class="card-header"><h3>Class Roster <a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3></div>
+                        
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Student</th>
+                                                    <th>EMPLID</th>
+                                                    <th>Grade</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for student in students_in_class %}
+                                                <tr>
+                                                    <td>{{student.student.user.first_name}}
+                                                        {{student.student.user.last_name}}
+                                                    </td>
+
+                                                    <td>{{student.student.user.psid}}</td>
+                                                    <td>{{student.grade}}</td>
+                                                    <td>{{student.status|capfirst}}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {%else%}
+                        <div class="" id="class_roster">
+                            <div class="card">
+                                <div class="card-header"><h3>Grade Roster<a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3> </div>
+                                <div class="card-body">
+                                    {{message|safe}}
+                                    <form action="" method="post">
+                                        {{ grade_formset.management_form }}
+                                        {% csrf_token %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Student</th>
+                                                        <th>Grade</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for form in grade_formset %}
+                                                    <tr>
+                                                        <td>
+                                                            {{form.student.value}}
+                                                            {{form.student_id}}
+                                                            {{form.student}}
+                                                        </td>
+                                                        <td>{{form.grade|as_crispy_field}}</td>
+                                                    </tr>
+                                                    {% endfor %}
+
+                                                {% if class_section.grade_status != 'submitted' %}
+                                                <tfoot>
+                                                    <tr>
+                                                        <td colspan=2 class="text-right">
+                                                            <input type="hidden" name="action" value="save_grade">
+                                                            <input type="submit" name='save_grade' class="btn btn-secondary btn-sm"
+                                                                value="Save Grades as 'Draft'">
+                                                                &nbsp;
+                                                            <input type="submit" name='submit_grade' class="btn btn-primary btn-sm"
+                                                                value="Submit Final Grades">
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                                <script>
+                                                    jQuery(document).ready(function($) {
+                                                        $('select').change(function() {
+                                                            
+                                                        });
+                                                    })
+                                                </script>
+                                                {% else %}
+                                                    <script>
+                                                        jQuery(document).ready(function($) {
+                                                            $('select').prop('disabled', 'disabled');
+                                                        });
+                                                    </script>
+                                                {% endif %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div> <!-- end #class_roster -->
+                        {%endif%}
+                    </div>
+                </div>
+                <div class="clearfix">&nbsp;</div>
+            </div>
+        </div>
+</main>
+{% endblock %}
