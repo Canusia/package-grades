@@ -73,12 +73,17 @@
                     
                     <div class="tab-content">
 
-                        {% if not is_open %}
+                        {% if not is_open or not roster_gate_ok %}
                         <div class="" id="class_grades">
                             <div class="card">
                                 <div class="card-header"><h3>Class Roster <a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3></div>
-                        
+
                                 <div class="card-body">
+                                    {% if not roster_gate_ok %}
+                                    <div class="alert alert-warning" role="alert">
+                                        {{ roster_gate_message|safe }}
+                                    </div>
+                                    {% endif %}
                                     <div class="table-responsive">
                                         <table class="table table-striped">
                                             <thead>

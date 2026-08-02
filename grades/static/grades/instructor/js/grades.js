@@ -29,9 +29,18 @@ $(document).ready(function () {
             },
             {
                 'render': function (data, type, row, meta) {
-                    if (!row.grade_status)
-                        return '-';
-                    return row.grade_status.toUpperCase();
+                    var status = row.grade_status ? row.grade_status.toUpperCase() : '-';
+
+                    // Roster confirmation gate: flag the section rather than
+                    // hiding it, so an instructor can see why it is not
+                    // gradeable yet. The server enforces the gate; this is
+                    // signposting only.
+                    if (config.data('require-roster-confirmation') &&
+                        row.roster_status === 'pending verification') {
+                        status += ' <span class="badge badge-warning">Roster not confirmed</span>';
+                    }
+
+                    return status;
                 }
             },
             {

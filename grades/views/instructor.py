@@ -9,6 +9,7 @@ from ..forms.section import ClassSectionGradeFormSet, ClassSectionGradeForm
 from cis.utils import grades_page_header_for_instructor, is_submit_grades_open
 from cis.settings.instructor_portal import instructor_portal as portal_lang
 from ..services.roster import students_for_grades
+from ..services.gating import can_enter_grades
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -32,6 +33,8 @@ def class_grades(request):
             'page_header': grades_page_header_for_instructor(),
             'is_open': is_submit_grades_open(),
             'classes_api': classes_api,
+            'require_roster_confirmation': grade_settings.get(
+                'require_roster_confirmation', False),
             'grades_intro': grade_settings.get('grades_open') if is_submit_grades_open() else grade_settings.get('grades_closed'),
         })
 
@@ -46,6 +49,11 @@ def class_section_grade(request, record_id):
         ClassSection, pk=record_id, teacher__user=request.user
     )
     students_in_class = students_for_grades(class_section_info)
+
+    # Roster confirmation gate. Renders the page read-only when the roster is
+    # still pending verification; the POST branch below is what actually
+    # prevents a write.
+    roster_gate_ok, roster_gate_message = can_enter_grades(class_section_info)
 
     settings = class_section_grades.from_db()
     grade_data = [
@@ -71,6 +79,18 @@ def class_section_grade(request, record_id):
     )
 
     if request.method == 'POST':
+        # The real gate. The read-only rendering above is a courtesy; a POST is
+        # refused regardless of what the UI showed.
+        if not roster_gate_ok:
+            messages.add_message(
+                request,
+                messages.SUCCESS,
+                roster_gate_message,
+                'list-group-item-danger'
+            )
+            return redirect(
+                'instructor:class_section_grade', record_id=class_section_info.id)
+
         if not is_submit_grades_open():
             messages.add_message(
                 request,
@@ -136,6 +156,8 @@ def class_section_grade(request, record_id):
             'grade_formset': gradeformset,
             'students_in_class': students_in_class,
             'is_open': is_submit_grades_open(),
+            'roster_gate_ok': roster_gate_ok,
+            'roster_gate_message': roster_gate_message,
             'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
             'message': message
         })

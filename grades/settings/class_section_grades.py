@@ -49,6 +49,29 @@ class SettingForm(forms.Form):
         help_text='Available to post grades until'
     )
 
+    require_roster_confirmation = forms.BooleanField(
+        required=False,
+        label='Require roster confirmation before grades are entered',
+        help_text=(
+            'When checked, an instructor cannot enter grades for a class '
+            'section whose roster is still marked Pending Verification. '
+            'Sections the instructor has already responded to (Accurate or '
+            'Inaccurate), and sections never sent for verification, are not '
+            'affected.'
+        )
+    )
+
+    roster_not_confirmed_message = forms.CharField(
+        max_length=None,
+        widget=forms.Textarea,
+        required=False,
+        help_text=(
+            'Shown on the class section page when grade entry is blocked '
+            'because the roster is pending verification.'
+        ),
+        label="Roster Not Confirmed Message"
+    )
+
     reminder_dates = forms.CharField(
         required=False,
         help_text='Select specific dates to send grade reminders',
@@ -352,6 +375,11 @@ class SettingForm(forms.Form):
             'grades': ','.join(grades_list),
             'gpa_points': gpa_points,
             'registration_status': self.cleaned_data['registration_status'],
+
+            'require_roster_confirmation': self.cleaned_data.get(
+                'require_roster_confirmation', False),
+            'roster_not_confirmed_message': self.cleaned_data.get(
+                'roster_not_confirmed_message', ''),
 
             'reminder_dates': self.cleaned_data.get('reminder_dates', ''),
             'cron': self.cleaned_data['cron'],
