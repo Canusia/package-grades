@@ -1,0 +1,212 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Class Grades{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+{% block body %}
+<main>
+    {{intro|safe}}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'highschool_admin:dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'highschool_admin:classes' %}">All Classes</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'highschool_admin:class_section' class_section.id %}">{{class_section}}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Grades</li>
+        </ol>
+    </nav>
+    <div class="row">
+        <div class="col-12">
+            {% if messages %}
+            <ul class="messages list-group mb-4">
+                {% for message in messages %}
+                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                    {{ message }}</li>
+                    {% endfor %}
+            </ul>
+            {% endif %}
+            <style>
+                div.cell div.info {
+                    font-size: 1.1em;
+                }
+
+                div.cell div.label {
+                    text-transform: uppercase;
+                    font-size: 0.7em;
+                    font-weight: 100;
+                }
+            </style>
+            <div class="row">
+                <div class="col-md-5">
+                    <div class="card">
+                        <div class="card-header"><h3>Class Details</h3></div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.term}}</div>
+                                        <div class="label">Term</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.course}}</div>
+                                        <div class="label">Course</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.class_number}}</div>
+                                        <div class="label">Class #</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.teacher}}</div>
+                                        <div class="label">Instructor</div>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="cell mb-3">
+                                        <div class="info">{{class_section.highschool}}</div>
+                                        <div class="label">High School</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-7">
+
+                    {# Grading period selector. Absent entirely when the term
+                       defines no periods, which is the pre-periods behaviour. #}
+                    {% if periods %}
+                    <ul class="nav nav-tabs mb-0">
+                        {% for p in periods %}
+                        <li class="nav-item">
+                            <a class="nav-link{% if p.id == period.id %} active{% endif %}"
+                               href="?period={{ p.id }}">
+                                {{ p.name }}
+                                {% if p.is_final %}<span class="badge badge-secondary">Final</span>{% endif %}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if period %}
+                    <div class="alert alert-light border mb-3" role="status">
+                        <strong>{{ period.name }}</strong> &mdash;
+                        open {{ period.opens_on|date:"m/d/Y" }}
+                        to {{ period.due_on|date:"m/d/Y" }}.
+                        {% if not is_open %}
+                        <span class="text-danger">This period is not currently open for grade entry.</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    <div class="tab-content">
+
+                        {% if not is_open or not roster_gate_ok %}
+                        <div class="" id="class_grades">
+                            <div class="card">
+                                <div class="card-header"><h3>Class Roster <a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3></div>
+
+                                <div class="card-body">
+                                    {% if not roster_gate_ok %}
+                                    <div class="alert alert-warning" role="alert">
+                                        {{ roster_gate_message|safe }}
+                                    </div>
+                                    {% endif %}
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Student</th>
+                                                    <th>EMPLID</th>
+                                                    <th>Grade</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for student in students_in_class %}
+                                                <tr>
+                                                    <td>{{student.student.user.first_name}}
+                                                        {{student.student.user.last_name}}
+                                                    </td>
+
+                                                    <td>{{student.student.user.psid}}</td>
+                                                    <td>{{student.grade}}</td>
+                                                    <td>{{student.status|capfirst}}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {%else%}
+                        <div class="" id="class_roster">
+                            <div class="card">
+                                <div class="card-header"><h3>Grade Roster<a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3> </div>
+                                <div class="card-body">
+                                    {{message|safe}}
+                                    <form action="" method="post">
+                                        {{ grade_formset.management_form }}
+                                        {% csrf_token %}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Student</th>
+                                                        <th>Grade</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for form in grade_formset %}
+                                                    <tr>
+                                                        <td>
+                                                            {{form.student.value}}
+                                                            {{form.student_id}}
+                                                            {{form.student}}
+                                                        </td>
+                                                        <td>{{form.grade|as_crispy_field}}</td>
+                                                    </tr>
+                                                    {% endfor %}
+
+                                                {% if period_status != 'submitted' %}
+                                                <tfoot>
+                                                    <tr>
+                                                        <td colspan=2 class="text-right">
+                                                            <input type="hidden" name="action" value="save_grade">
+                                                            <input type="submit" name='save_grade' class="btn btn-secondary btn-sm"
+                                                                value="Save Grades as 'Draft'">
+                                                                &nbsp;
+                                                            <input type="submit" name='submit_grade' class="btn btn-primary btn-sm"
+                                                                value="Submit Final Grades">
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                                {% else %}
+                                                    <script>
+                                                        jQuery(document).ready(function($) {
+                                                            $('select').prop('disabled', 'disabled');
+                                                        });
+                                                    </script>
+                                                {% endif %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div> <!-- end #class_roster -->
+                        {%endif%}
+                    </div>
+                </div>
+                <div class="clearfix">&nbsp;</div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

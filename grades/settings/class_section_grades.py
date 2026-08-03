@@ -99,7 +99,7 @@ class SettingForm(forms.Form):
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{term}}, {{number_of_sections_pending_grades}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_due\')" >See Preview</a>',
+        help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{term}}, {{number_of_sections_pending_grades}}, {{grading_period}} (grading period reminders only). <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_due\')" >See Preview</a>',
         label="Grades Due Email Message")
    
     grades_closed = forms.CharField(
@@ -364,6 +364,14 @@ class SettingForm(forms.Form):
         )
         cron.cron = self.cleaned_data.get('cron')
         cron.save()
+
+        # Grading-period reminders run on the same schedule; the command is a
+        # no-op on tenants that have defined no periods.
+        period_cron, created = CronTab.objects.get_or_create(
+            command='notify_period_grades_pending'
+        )
+        period_cron.cron = self.cleaned_data.get('cron')
+        period_cron.save()
 
         # Parse grade_scale and derive grades + gpa_points for backward compatibility
         grade_scale = self._parse_grade_scale(self.cleaned_data.get('grade_scale', ''))
