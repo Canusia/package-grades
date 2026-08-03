@@ -9,6 +9,7 @@ Imports of other apps (``myce``, ``cis``) are absolute; intra-package imports
 are relative, because in editable mode this package is ``grades.grades``.
 """
 from myce.component_registry.class_section_index import class_section_index_tabs
+from myce.component_registry.term import term_tabs
 
 
 @class_section_index_tabs.tab(slug='grades', title='Grades', order=20,
@@ -68,4 +69,21 @@ def sections_grades_tab(request, record):
         'grade_distribution': list(grade_distribution),
         'grade_total': grade_total,
         'grade_terms': Term.objects.filter(pk__in=grade_term_ids),
+    }
+
+
+@term_tabs.tab(slug='grading_periods', title='Grading Periods', order=100,
+               template='grades/ce/_grading_periods_tab.html')
+def grading_periods_tab(request, record):
+    """CE staff configuration of a term's grade collections.
+
+    `record` is the Term. Periods belong to exactly one term -- a subterm
+    carries its own -- so this lists only the term's own periods, never a
+    parent's.
+    """
+    from .models import GradingPeriod
+
+    return {
+        'grading_periods': GradingPeriod.objects.filter(
+            term=record).order_by('sequence', 'name'),
     }

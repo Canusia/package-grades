@@ -1,0 +1,36 @@
+{% extends 'cis/ajax-base.html' %}
+
+{% block title %}Manage Grading Period{% endblock %}
+
+{% load crispy_forms_tags %}
+
+{% block body %}
+<div class="card border-0">
+    <div class="card-body">
+        <h5 class="card-title mb-4">
+            {% if record %}Edit Grading Period{% else %}Add Grading Period{% endif %}
+            &mdash; {{ term.label }} {{ term.year }}
+        </h5>
+        <div class="card-text">
+            <div class="form_status"></div>
+
+            <form id="form_grading_period" method="post"
+                  action="{% if record %}{% url 'grades_ce:edit_grading_period' term.id record.id %}{% else %}{% url 'grades_ce:add_grading_period' term.id %}{% endif %}">
+                {% csrf_token %}
+                {{ form | crispy }}
+
+                <input type="submit" class="btn btn-primary btn-sm" value="Save">
+                <input type="button" class="btn btn-sm" data-dismiss="modal" value="Cancel & Close">
+
+                {% if record %}
+                <a class="btn btn-danger btn-sm gp-delete float-right" href="#"
+                   data-name="{{ record.name }}"
+                   data-url="{% url 'grades_ce:delete_grading_period' term.id record.id %}">
+                    <i class="fa fa-trash-alt text-light"></i>
+                </a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

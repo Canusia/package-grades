@@ -1,6 +1,7 @@
 include README.md
 recursive-include grades/forms *
 recursive-include grades/management *
+recursive-include grades/migrations *
 recursive-include grades/reports *
 recursive-include grades/services *
 recursive-include grades/settings *

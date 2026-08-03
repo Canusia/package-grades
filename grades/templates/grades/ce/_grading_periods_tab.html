@@ -1,0 +1,205 @@
+{% load static %}
+<div class="card border-top-0">
+    <div class="card-body">
+
+        <div class="card mb-3">
+            <div class="card-body bg-gray-200">
+                <div class="row align-items-center">
+                    <div class="col-md-8 col-sm-12">
+                        <p class="mb-0">
+                            Grading periods define when grades are collected for
+                            <strong>{{ record.label }} {{ record.year }}</strong>. Sections on a
+                            subterm use that subterm&rsquo;s periods, not this term&rsquo;s.
+                            Exactly one period may be marked as the final grade collection &mdash;
+                            that is the one written back to the student registration and exported
+                            to the SIS.
+                        </p>
+                    </div>
+                    <div class="col-md-4 col-sm-12 text-md-right mt-2 mt-md-0">
+                        <a href="#grading_periods" class="btn btn-sm btn-primary gp-manage"
+                           data-url="{% url 'grades_ce:add_grading_period' record.id %}">
+                            <i class="fa fas-light fa-plus-circle"></i>&nbsp;Add New
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Seq.</th>
+                        <th>Name</th>
+                        <th>Opens On</th>
+                        <th>Due On</th>
+                        <th>Final</th>
+                        <th>Reminder</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for period in grading_periods %}
+                    <tr>
+                        <td>{{ period.sequence }}</td>
+                        <td>
+                            <a href="#grading_periods" class="gp-manage" title="Edit"
+                               data-url="{% url 'grades_ce:edit_grading_period' record.id period.id %}">
+                                {{ period.name }}
+                            </a>
+                        </td>
+                        <td>{{ period.opens_on|date:"m/d/Y" }}</td>
+                        <td>{{ period.due_on|date:"m/d/Y" }}</td>
+                        <td>
+                            {% if period.is_final %}
+                            <span class="badge badge-primary">Final</span>
+                            {% else %}
+                            <span class="text-muted">Interim</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if period.reminder_frequency_days %}
+                            Every {{ period.reminder_frequency_days }} day{{ period.reminder_frequency_days|pluralize }}
+                            {% else %}
+                            <span class="text-muted">Off</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right">
+                            <a href="#grading_periods" class="gp-manage mr-3" title="Edit"
+                               data-url="{% url 'grades_ce:edit_grading_period' record.id period.id %}">Edit</a>
+                            <a href="#grading_periods" class="gp-delete text-danger" title="Delete"
+                               data-name="{{ period.name }}"
+                               data-url="{% url 'grades_ce:delete_grading_period' record.id period.id %}">
+                                <i class="fa fa-trash-alt"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted p-4">
+                            No grading periods defined for this term. Grades continue to be
+                            collected using the single submission window from
+                            <em>Class Grades Settings</em> until a period is added here.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</div>
+
+<!-- Own modal, not cis's #modal-add_new: that one's global submit handler posts
+     every form inside it to /ce/add_new_ajax/, which does not know this model. -->
+<div class="modal fade" id="gp_modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Grading Period</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="gp_modal_content"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+jQuery(function ($) {
+    // The tab fragment can be re-injected; keep exactly one modal, on <body>,
+    // so Bootstrap is not laying it out inside a .tab-content.
+    $('body > #gp_modal').remove();
+    $('#gp_modal').appendTo('body');
+
+    $(document).off('click.gradingPeriods').on('click.gradingPeriods', 'a.gp-manage', function (e) {
+        e.preventDefault();
+        var url = $(this).attr('data-url');
+        $.ajax({ url: url, type: 'GET' })
+            .done(function (html) {
+                $('#gp_modal_content').html(html);
+                $('#gp_modal').modal('show');
+            })
+            .fail(function () {
+                swal('', 'Unable to open the grading period form.', 'error');
+            });
+    });
+
+    $(document).off('submit.gradingPeriods').on('submit.gradingPeriods', '#gp_modal form', function (e) {
+        e.preventDefault();
+        var $form = $(this);
+
+        $form.find('.is-invalid').removeClass('is-invalid');
+        $form.find('p.invalid-feedback').remove();
+        $form.find('.form_status').empty();
+
+        $.blockUI();
+        $.ajax({
+            type: 'POST',
+            url: $form.attr('action'),
+            data: new FormData(this),
+            processData: false,
+            contentType: false
+        })
+            .done(function (response) {
+                $.unblockUI();
+
+                if (response.status === 'success') {
+                    if (response.action === 'reload') {
+                        $('#gp_modal').modal('hide');
+                        location.reload();
+                    }
+                    return;
+                }
+
+                var errors = response.errors || {};
+                var nonField = [];
+
+                for (var name in errors) {
+                    for (var i = 0; i < errors[name].length; i++) {
+                        var message = errors[name][i].message;
+                        if (name === '__all__') {
+                            nonField.push(message);
+                            continue;
+                        }
+                        var $input = $form.find("[name='" + name + "']");
+                        $input.addClass('is-invalid');
+                        $input.after("<p class='invalid-feedback d-block'><strong>" + message + "</strong></p>");
+                    }
+                }
+
+                var html = "<p class='alert alert-danger'>" + response.message + "</p>";
+                for (var n = 0; n < nonField.length; n++) {
+                    html += "<p class='alert alert-danger'>" + nonField[n] + "</p>";
+                }
+                $form.find('.form_status').html(html);
+            })
+            .fail(function () {
+                $.unblockUI();
+                swal('', 'There was an error submitting the form.', 'error');
+            });
+    });
+
+    $(document).off('click.gradingPeriodsDelete').on('click.gradingPeriodsDelete', 'a.gp-delete', function (e) {
+        e.preventDefault();
+        var $link = $(this);
+        if (!confirm('Permanently delete the grading period "' + $link.attr('data-name') + '"?'))
+            return;
+
+        $.blockUI();
+        $.ajax({ url: $link.attr('data-url'), type: 'GET' })
+            .done(function (response) {
+                $.unblockUI();
+                swal('', response.message, response.status);
+                if (response.status === 'success') {
+                    location.reload();
+                }
+            })
+            .fail(function () {
+                $.unblockUI();
+                swal('', 'Unable to delete this grading period.', 'error');
+            });
+    });
+});
+</script>
