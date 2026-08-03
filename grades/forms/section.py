@@ -5,6 +5,7 @@ from django import forms
 from django.forms.formsets import BaseFormSet
 
 from cis.models.section import StudentRegistration
+from ..services.periods import save_mark
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -45,8 +46,11 @@ class ClassSectionGradeFormSet(BaseFormSet):
     previously used as a bare primary key.
     """
 
-    def __init__(self, *args, class_section=None, **kwargs):
+    def __init__(self, *args, class_section=None, period=None, user=None,
+                 **kwargs):
         self.class_section = class_section
+        self.period = period
+        self.user = user
         super().__init__(*args, **kwargs)
 
     def _allowed_registration_ids(self):
@@ -82,4 +86,12 @@ class ClassSectionGradeFormSet(BaseFormSet):
             if self.class_section is not None:
                 qs = qs.filter(class_section=self.class_section)
 
-            qs.update(grade=grade)
+            registration = qs.first()
+            if registration is None:
+                continue
+
+            # Where the mark lands depends on whether this period is the final
+            # one; services.periods owns that rule so it cannot be duplicated
+            # and drift. period=None means no grading periods are configured,
+            # which routes to the registration grade -- today's behaviour.
+            save_mark(self.period, registration, grade, user=self.user)

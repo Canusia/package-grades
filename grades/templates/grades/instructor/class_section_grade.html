@@ -70,7 +70,33 @@
                 </div>
 
                 <div class="col-md-7">
-                    
+
+                    {# Grading period selector. Absent entirely when the term
+                       defines no periods, which is the pre-periods behaviour. #}
+                    {% if periods %}
+                    <ul class="nav nav-tabs mb-0">
+                        {% for p in periods %}
+                        <li class="nav-item">
+                            <a class="nav-link{% if p.id == period.id %} active{% endif %}"
+                               href="?period={{ p.id }}">
+                                {{ p.name }}
+                                {% if p.is_final %}<span class="badge badge-secondary">Final</span>{% endif %}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if period %}
+                    <div class="alert alert-light border mb-3" role="status">
+                        <strong>{{ period.name }}</strong> &mdash;
+                        open {{ period.opens_on|date:"m/d/Y" }}
+                        to {{ period.due_on|date:"m/d/Y" }}.
+                        {% if not is_open %}
+                        <span class="text-danger">This period is not currently open for grade entry.</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
                     <div class="tab-content">
 
                         {% if not is_open or not roster_gate_ok %}
@@ -141,7 +167,7 @@
                                                     </tr>
                                                     {% endfor %}
 
-                                                {% if class_section.grade_status != 'submitted' %}
+                                                {% if period_status != 'submitted' %}
                                                 <tfoot>
                                                     <tr>
                                                         <td colspan=2 class="text-right">

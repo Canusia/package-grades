@@ -1,4 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
+from django.http import Http404
 from django.contrib import messages
 from django.forms.formsets import formset_factory
 
@@ -10,6 +11,14 @@ from cis.utils import grades_page_header_for_instructor, is_submit_grades_open
 from cis.settings.instructor_portal import instructor_portal as portal_lang
 from ..services.roster import students_for_grades
 from ..services.gating import can_enter_grades
+from ..services.periods import (
+    periods_for_section,
+    resolve_period,
+    is_period_open,
+    grades_for,
+    get_status,
+    set_status,
+)
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -55,11 +64,23 @@ def class_section_grade(request, record_id):
     # prevents a write.
     roster_gate_ok, roster_gate_message = can_enter_grades(class_section_info)
 
+    # Grading periods. A term with none configured keeps the old single-window
+    # behaviour exactly: period stays None and every downstream call falls back.
+    periods = periods_for_section(class_section_info)
+    period = resolve_period(class_section_info, request.GET.get('period'))
+    if periods and period is None:
+        # A period id was supplied that does not belong to this section's term.
+        raise Http404('Unknown grading period for this class section.')
+
+    window_open = is_period_open(period) if periods else is_submit_grades_open()
+    period_status = get_status(class_section_info, period)
+
     settings = class_section_grades.from_db()
+    existing_marks = grades_for(class_section_info, period, students_in_class)
     grade_data = [
         {
             'student_id': registration.id,
-            'grade': registration.grade,
+            'grade': existing_marks.get(registration.id, ''),
             'student': registration.student.user.last_name + ', ' + registration.student.user.first_name
         }
         for registration in students_in_class
@@ -75,7 +96,9 @@ def class_section_grade(request, record_id):
     )
     gradeformset = GradeFS(
         initial=grade_data,
-        class_section=class_section_info
+        class_section=class_section_info,
+        period=period,
+        user=request.user
     )
 
     if request.method == 'POST':
@@ -91,11 +114,12 @@ def class_section_grade(request, record_id):
             return redirect(
                 'instructor:class_section_grade', record_id=class_section_info.id)
 
-        if not is_submit_grades_open():
+        if not window_open:
             messages.add_message(
                 request,
                 messages.SUCCESS,
-                'Grade submission is currently closed.',
+                f'Grade submission for {period.name} is currently closed.'
+                if period else 'Grade submission is currently closed.',
                 'list-group-item-success'
             )
             return redirect('instructor:dashboard')
@@ -103,7 +127,9 @@ def class_section_grade(request, record_id):
         gradeformset = GradeFS(
             request.POST,
             initial=grade_data,
-            class_section=class_section_info
+            class_section=class_section_info,
+            period=period,
+            user=request.user
         )
 
         if request.GET.get('action') == 'download_roster_pdf':
@@ -117,8 +143,8 @@ def class_section_grade(request, record_id):
             gradeformset.save()
 
             if 'Draft' in request.POST.get('save_grade', ''):
-                class_section_info.grade_status = 'saved'
-                class_section_info.save()
+                set_status(class_section_info, period, 'saved')
+                period_status = 'saved'
 
                 messages.add_message(
                     request,
@@ -126,8 +152,8 @@ def class_section_grade(request, record_id):
                     'Your grades have been successfully saved.',
                     'list-group-item-success')
             else:
-                class_section_info.grade_status = 'submitted'
-                class_section_info.save()
+                set_status(class_section_info, period, 'submitted')
+                period_status = 'submitted'
 
                 messages.add_message(
                     request,
@@ -142,7 +168,7 @@ def class_section_grade(request, record_id):
                 'list-group-item-danger')
 
     message = ''
-    if class_section_info.grade_status == 'submitted':
+    if period_status == 'submitted':
         message = settings.get('grades_submitted_class_section')
     else:
         message = settings.get('grades_open_class_section')
@@ -155,9 +181,12 @@ def class_section_grade(request, record_id):
             'class_section': class_section_info,
             'grade_formset': gradeformset,
             'students_in_class': students_in_class,
-            'is_open': is_submit_grades_open(),
+            'is_open': window_open,
             'roster_gate_ok': roster_gate_ok,
             'roster_gate_message': roster_gate_message,
+            'periods': periods,
+            'period': period,
+            'period_status': period_status,
             'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
             'message': message
         })
