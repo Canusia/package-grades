@@ -1,0 +1,14 @@
+# Build configuration only.
+#
+# v0.0.1 through v0.0.3 shipped `setup.cfg` alone, which modern pip refuses to
+# build: "does not appear to be a Python project: neither 'setup.py' nor
+# 'pyproject.toml' found". That made those tags impossible to pip-install, so
+# the only installable release was v0.0.4 -- which also brings grading periods,
+# their models and migrations, and the CE and HS-admin entry surfaces. A tenant
+# that wanted the pre-grading-periods code had no way to get it (ewu#41).
+#
+# Package metadata deliberately stays in setup.cfg: this tag is v0.0.1's code
+# plus the file needed to build it, nothing else.
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
