@@ -534,14 +534,7 @@ class class_section_grades(SettingForm):
             'transcript_registration_status': ['registered'],
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     @classmethod
     def get_transcript_defaults(cls):
