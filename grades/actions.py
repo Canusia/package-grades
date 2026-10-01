@@ -51,16 +51,35 @@ def send_sections(request):
     confirm='Send the selected student grade(s) to the SIS?',
     permission=can_push)
 def send_registrations(request):
+    """Bulk send of selected registrations -- the bulk rule, not the single one.
+
+    Only rows on this tab's own queryset are considered (grade terms, a real
+    grade, roster statuses); anything else submitted, incl. malformed ids, is
+    ignored. Of those, a row is sent only when its section's grades are
+    submitted and its sync state is bulk-eligible (sis_push.bulk_eligible_ids:
+    never `sent`, never freshly `queued`). Re-sending a single student
+    regardless of section status is the registration-detail action's job.
+    """
     from .views.sis_sync import registration_queryset
 
-    # Restrict to the Registrations tab's own rows: grade terms, a real grade,
-    # roster statuses. Anything else submitted (incl. malformed ids) is ignored.
     ids = sis_push._parse_ids(request.POST.getlist('ids[]'))
-    registrations = registration_queryset().filter(pk__in=ids) if ids else []
-    eligible = [r.pk for r in registrations if sis_push.check_single(r) is None]
+    registrations = list(registration_queryset().filter(pk__in=ids)) if ids else []
+    submitted = [r for r in registrations if r.class_section.grade_status == 'submitted']
+    not_submitted = len(registrations) - len(submitted)
+    eligible = sis_push.bulk_eligible_ids(submitted)
     count = sis_push.enqueue(eligible, request.user)
+
+    reasons = []
+    if not_submitted:
+        reasons.append(f'{not_submitted} section grades not submitted')
+    already = len(submitted) - count
+    if already:
+        reasons.append(f'{already} already sent or in progress')
+    ignored = len(set(ids)) - len(registrations)
+    if ignored:
+        reasons.append(f'{ignored} not on this page (no grade or outside the grade terms)')
     message = f'{count} registration(s) queued for the SIS.'
-    skipped = len(set(ids)) - count
-    if skipped:
-        message += f' {skipped} skipped (no grade, not in the grade terms, or a send already in progress).'
+    if reasons:
+        skipped = len(set(ids)) - count
+        message += f' {skipped} skipped: ' + '; '.join(reasons) + '.'
     return _done(message, 'success' if count else 'info')

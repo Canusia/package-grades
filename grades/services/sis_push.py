@@ -105,17 +105,31 @@ def select_for_sections(section_ids):
             skipped.append(section)
             continue
         registrations = list(students_for_grades(section).filter(graded_q()))
-        syncs = {
-            s.registration_id: s
-            for s in GradeSISSync.objects.filter(registration__in=registrations)
-        }
-        for registration in registrations:
-            sync = syncs.get(registration.pk)
-            if sync is None or sync.status in (GradeSISSync.FAILED, GradeSISSync.NEEDS_MIRRORING):
-                ids.append(str(registration.pk))
-            elif sync.status == GradeSISSync.QUEUED and not is_in_flight(sync, now):
-                ids.append(str(registration.pk))
+        ids.extend(bulk_eligible_ids(registrations, now))
     return ids, skipped
+
+
+def bulk_eligible_ids(registrations, now=None):
+    """Ids (str) of `registrations` a class / bulk push may send, by sync state.
+
+    The bulk rule: no sync row yet, failed, needs_mirroring, or a stale queued
+    row. `sent` rows and fresh `queued` rows are left alone. The caller is
+    responsible for the section-status (submitted) and graded checks.
+    """
+    now = now or timezone.now()
+    registrations = list(registrations)
+    syncs = {
+        s.registration_id: s
+        for s in GradeSISSync.objects.filter(registration__in=registrations)
+    }
+    ids = []
+    for registration in registrations:
+        sync = syncs.get(registration.pk)
+        if sync is None or sync.status in (GradeSISSync.FAILED, GradeSISSync.NEEDS_MIRRORING):
+            ids.append(str(registration.pk))
+        elif sync.status == GradeSISSync.QUEUED and not is_in_flight(sync, now):
+            ids.append(str(registration.pk))
+    return ids
 
 
 def check_single(registration):

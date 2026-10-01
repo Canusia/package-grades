@@ -46,15 +46,11 @@ class _SISPageBase(SISFixtureMixin, TestCase):
         # and errors under force_login; disconnect it for each test.
         if _login_history_post_login is not None:
             user_logged_in.disconnect(_login_history_post_login)
+            self.addCleanup(user_logged_in.connect, _login_history_post_login)
         self.client.force_login(self.ce_user)
         patcher = patch(GET_PUSHER, return_value=_pusher)
         patcher.start()
         self.addCleanup(patcher.stop)
-
-    def tearDown(self):
-        if _login_history_post_login is not None:
-            user_logged_in.connect(_login_history_post_login)
-        super().tearDown()
 
     def sections_feed(self, query=''):
         url = reverse('grades_ce:sis-sections-list') + '?format=datatables&draw=1' + query
@@ -406,3 +402,38 @@ class SISActionTests(_SISPageBase):
         self.assertEqual(callbacks, [])
         task.assert_not_called()
         self.assertFalse(GradeSISSync.objects.exists())
+
+    def test_send_registrations_skips_unsubmitted_section(self):
+        draft = self.make_section(grade_status='saved')
+        in_draft = self.make_registration(draft)
+        submitted = self.make_section()
+        ok = self.make_registration(submitted)
+
+        with patch(ENQUEUE_TASK) as task:
+            with self.captureOnCommitCallbacks(execute=True):
+                resp = self.post_action('send_registrations', [in_draft.id, ok.id])
+
+        task.assert_called_once_with([str(ok.id)], self.ce_user.pk)
+        message = resp.json()['args']['message']
+        self.assertIn('1 skipped', message)
+        self.assertIn('not submitted', message)
+        self.assertFalse(GradeSISSync.objects.filter(registration=in_draft).exists())
+
+    def test_send_registrations_does_not_resend_sent_rows(self):
+        section = self.make_section()
+        sent = self.make_registration(section)
+        sent_at = timezone.now() - timedelta(days=1)
+        GradeSISSync.objects.create(registration=sent, status=GradeSISSync.SENT,
+                                    sent_grade='A', last_sent_at=sent_at,
+                                    last_attempt_at=sent_at)
+
+        with patch(ENQUEUE_TASK) as task:
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                resp = self.post_action('send_registrations', [sent.id])
+
+        self.assertEqual(callbacks, [])
+        task.assert_not_called()
+        self.assertIn('already sent', resp.json()['args']['message'])
+        sync = GradeSISSync.objects.get(registration=sent)
+        self.assertEqual(sync.status, GradeSISSync.SENT)
+        self.assertEqual(sync.last_attempt_at, sent_at)
