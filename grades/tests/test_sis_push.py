@@ -150,6 +150,22 @@ class EnqueueTests(SISFixtureMixin, TestCase):
             self.assertEqual(sis_push.enqueue([], self.ce_user), 0)
         enqueue_task.assert_not_called()
 
+    def test_already_freshly_queued_row_is_not_reenqueued(self):
+        """Double-click / two-staff race (spec S:153): a registration whose
+        sync row is already in-flight queued must not be re-queued, re-counted
+        or re-enqueued by a second concurrent request."""
+        section = self.make_section()
+        reg = self.make_registration(section)
+        GradeSISSync.objects.create(
+            registration=reg, status='queued', last_attempt_at=timezone.now())
+
+        with patch.object(sis_push, '_enqueue_task') as enqueue_task:
+            with self.captureOnCommitCallbacks(execute=True):
+                count = sis_push.enqueue([reg.id], self.ce_user)
+
+        self.assertEqual(count, 0)
+        enqueue_task.assert_not_called()
+
 
 class RunPushTests(SISFixtureMixin, TestCase):
     def _run(self, pusher, reg):
@@ -216,15 +232,17 @@ class RunPushTests(SISFixtureMixin, TestCase):
         self.assertIn('boom', GradeSISSync.objects.get(registration=first).last_error)
 
     def test_recording_exception_isolated_to_one_row(self):
-        """Ruling 1: _record runs inside the per-row try, so a bad recording
-        step (e.g. Banner returning a non-UUID record id) fails only that row."""
+        """Ruling 1: _record runs inside its own savepoint, so a bad recording
+        step (e.g. Banner returning a non-UUID record id) fails only that row,
+        and per spec S:175 an attempt row is still appended either way,
+        carrying the pusher's log_url even though recording itself failed."""
         section = self.make_section()
         bad = self.make_registration(section)
         good = self.make_registration(section)
 
         def returns_bad_record_id(registration, grade, existing_record_id=None):
             if registration.pk == bad.pk:
-                return GradePushResult(True, record_id='not-a-uuid')
+                return GradePushResult(True, record_id='not-a-uuid', log_url='/ce/ethos/logs/9/')
             return GradePushResult(True, record_id=RECORD)
 
         with patch.object(sis_push, 'get_pusher', return_value=returns_bad_record_id):
@@ -235,6 +253,10 @@ class RunPushTests(SISFixtureMixin, TestCase):
         bad_sync = GradeSISSync.objects.get(registration=bad)
         self.assertEqual(bad_sync.status, 'failed')
         self.assertTrue(bad_sync.last_error)
+        self.assertEqual(bad_sync.attempts.count(), 1)
+        attempt = bad_sync.attempts.get()
+        self.assertFalse(attempt.success)
+        self.assertEqual(attempt.log_url, '/ce/ethos/logs/9/')
 
     def test_blank_grade_at_run_time_fails(self):
         reg = self.make_registration(self.make_section(), grade='-')

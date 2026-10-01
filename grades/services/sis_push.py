@@ -104,7 +104,7 @@ def select_for_sections(section_ids):
         if section.grade_status != 'submitted':
             skipped.append(section)
             continue
-        registrations = [r for r in students_for_grades(section) if normalize_grade(r.grade)]
+        registrations = list(students_for_grades(section).filter(graded_q()))
         syncs = {
             s.registration_id: s
             for s in GradeSISSync.objects.filter(registration__in=registrations)
@@ -134,20 +134,45 @@ def _enqueue_task(ids, user_id):
 
 
 def enqueue(registration_ids, user):
-    """Mark registrations queued and enqueue the background push after commit."""
+    """Mark registrations queued and enqueue the background push after commit.
+
+    Guards against the double-click / two-staff race (spec S:153): a
+    registration whose sync row is already freshly `queued` (`is_in_flight`)
+    is left alone -- not re-queued, not re-counted, not re-enqueued -- so two
+    concurrent requests for the same registration cannot both reach the SIS.
+    `select_for_update` on the existing rows makes that check atomic against
+    a concurrent `enqueue` call racing to the same rows.
+    """
     ids = list(dict.fromkeys(str(i) for i in registration_ids))
     if not ids:
         return 0
     now = timezone.now()
     with transaction.atomic():
+        existing = {
+            str(s.registration_id): s
+            for s in GradeSISSync.objects.select_for_update().filter(registration_id__in=ids)
+        }
+        transitioned = []
         for reg_id in ids:
-            GradeSISSync.objects.update_or_create(
-                registration_id=reg_id,
-                defaults={'status': GradeSISSync.QUEUED,
-                          'last_attempt_at': now, 'last_attempt_by': user})
+            sync = existing.get(reg_id)
+            if sync is not None and is_in_flight(sync, now):
+                continue  # already queued and fresh elsewhere; don't re-enqueue
+            if sync is None:
+                GradeSISSync.objects.create(
+                    registration_id=reg_id, status=GradeSISSync.QUEUED,
+                    last_attempt_at=now, last_attempt_by=user)
+            else:
+                sync.status = GradeSISSync.QUEUED
+                sync.last_attempt_at = now
+                sync.last_attempt_by = user
+                sync.save()
+            transitioned.append(reg_id)
+
+        if not transitioned:
+            return 0
         user_id = user.pk if user else None
-        transaction.on_commit(lambda: _enqueue_task(ids, user_id))
-    return len(ids)
+        transaction.on_commit(lambda: _enqueue_task(transitioned, user_id))
+    return len(transitioned)
 
 
 def _current_grade(registration_id):
@@ -208,43 +233,51 @@ def run_push(registration_ids, user_id=None):
             registration=registration, defaults={'status': GradeSISSync.QUEUED})
         grade = normalize_grade(registration.grade)
 
-        result = None
-        try:
-            # Ruling 1: the per-row bookkeeping (_record) runs inside this
-            # same per-row try/atomic block, so a bad result (e.g. a non-UUID
-            # record id) only fails this row and the batch continues. The
-            # nested atomic() gives this row its own savepoint: a DB-level
-            # error in _record (e.g. an invalid UUID write) only rolls back
-            # this row's work, leaving the outer transaction healthy for the
-            # next registration.
-            with transaction.atomic():
-                if pusher is None:
-                    result = GradePushResult(False, error='No SIS grade pusher is configured.')
-                elif not grade:
-                    result = GradePushResult(False, error='Grade is blank.')
-                else:
-                    try:
-                        result = pusher(
-                            registration, grade,
-                            existing_record_id=(
-                                str(sync.sis_record_id) if sync.sis_record_id else None))
-                    except Exception as exc:  # one bad registration must not stop the batch
-                        logger.exception('Grade SIS push failed for registration %s', reg_id)
-                        result = GradePushResult(False, error=f'Unexpected error: {exc}')
+        # The pusher call (an HTTP round-trip to Banner) runs OUTSIDE any
+        # savepoint: it must never be rolled back by a later bookkeeping
+        # failure, since rolling it back would erase DB rows it wrote (e.g.
+        # the ethos pusher's EthosLog) while the SIS side effect it caused
+        # stands. Only the per-row bookkeeping (_record) gets its own
+        # savepoint (Ruling 1), so a bad result (e.g. a non-UUID record id)
+        # fails only this row's recording without reaching back into the
+        # pusher call or forward into the next registration.
+        if pusher is None:
+            result = GradePushResult(False, error='No SIS grade pusher is configured.')
+        elif not grade:
+            result = GradePushResult(False, error='Grade is blank.')
+        else:
+            try:
+                result = pusher(
+                    registration, grade,
+                    existing_record_id=(
+                        str(sync.sis_record_id) if sync.sis_record_id else None))
+            except Exception as exc:  # one bad registration must not stop the batch
+                logger.exception('Grade SIS push failed for registration %s', reg_id)
+                result = GradePushResult(False, error=f'Unexpected error: {exc}')
 
+        try:
+            with transaction.atomic():
                 _record(sync, grade, result, user)
             counts['sent' if result.success else 'failed'] += 1
         except Exception as exc:
             logger.exception('Recording SIS push outcome failed for registration %s', reg_id)
-            # The failed atomic block rolled back `sync`'s in-flight write
-            # (e.g. an unparsable record id), so reload the clean persisted
-            # row before writing the failure state.
+            # The failed savepoint rolled back `sync`'s in-flight write (e.g.
+            # an unparsable record id), so reload the clean persisted row
+            # before writing the failure state. Per spec S:175, an attempt
+            # row is appended either way -- carry the pusher's own log_url
+            # when a result was produced, so the Banner-side log link isn't
+            # lost even though the sync row records a bookkeeping failure.
+            now = timezone.now()
             sync.refresh_from_db()
             sync.status = GradeSISSync.FAILED
-            sync.last_attempt_at = timezone.now()
+            sync.last_attempt_at = now
             sync.last_attempt_by = user
             sync.last_error = f'Unexpected error recording result: {exc}'
             sync.save()
+            GradeSISSyncAttempt.objects.create(
+                sync=sync, attempted_at=now, attempted_by=user, grade=grade,
+                success=False, error=sync.last_error,
+                log_url=(result.log_url or '') if result is not None else '')
             counts['failed'] += 1
 
     return counts
