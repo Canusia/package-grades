@@ -167,6 +167,33 @@ class EnqueueTests(SISFixtureMixin, TestCase):
         self.assertEqual(count, 0)
         enqueue_task.assert_not_called()
 
+    def test_handoff_failure_fails_rows_instead_of_leaving_them_stuck_queued(self):
+        """If `_enqueue_task` raises inside the `on_commit` callback (e.g. the
+        task queue backend is unreachable), the rows are already committed
+        `queued` -- there is nothing left to roll back, so the request must
+        not 500. They must also not be left looking queued (they'd otherwise
+        sit looking "in flight" for 30 minutes with nothing working on
+        them): the on_commit hand-off must fail them with a clear error
+        instead.
+
+        Note on timing: `captureOnCommitCallbacks` defers running the
+        callback until *this* `with` block exits, not until `enqueue()`'s own
+        inner `transaction.atomic()` block exits (unlike real request
+        handling, where on_commit fires synchronously at that point) -- so
+        the DB state is only asserted after the outer `with` block here, not
+        the `count` enqueue() itself returned.
+        """
+        section = self.make_section()
+        reg = self.make_registration(section)
+
+        with patch.object(sis_push, '_enqueue_task', side_effect=RuntimeError('queue down')):
+            with self.captureOnCommitCallbacks(execute=True):
+                sis_push.enqueue([reg.id], self.ce_user)
+
+        sync = GradeSISSync.objects.get(registration=reg)
+        self.assertEqual(sync.status, 'failed')
+        self.assertEqual(sync.last_error, sis_push.HANDOFF_ERROR)
+
     def _force_one_gradesissync_get_miss(self):
         """Patch QuerySet.get at the class level so the FIRST .get() issued
         against a GradeSISSync queryset raises DoesNotExist, and every other
@@ -379,3 +406,24 @@ class RunPushTests(SISFixtureMixin, TestCase):
         self.assertEqual(sync.sent_grade, 'A')
         self.assertEqual(sync.status, 'needs_mirroring')
         self.assertIsNotNone(sync.grade_changed_at)
+
+    def test_heartbeat_stamps_last_attempt_at_before_calling_pusher(self):
+        """is_in_flight's 30-minute window must measure a dead worker, not
+        queue depth: the row's last_attempt_at has to move the moment the
+        worker reaches it, before the (possibly slow) pusher call, not only
+        afterwards when _record() writes the final outcome."""
+        reg = self.make_registration(self.make_section(), grade='A')
+        stale = timezone.now() - timedelta(minutes=45)
+        GradeSISSync.objects.create(
+            registration=reg, status='queued', last_attempt_at=stale)
+        seen = {}
+
+        def spy(registration, grade, existing_record_id=None):
+            seen['last_attempt_at'] = GradeSISSync.objects.get(
+                registration=registration).last_attempt_at
+            return GradePushResult(True, record_id=RECORD)
+
+        self._run(spy, reg)
+
+        self.assertIsNotNone(seen['last_attempt_at'])
+        self.assertGreater(seen['last_attempt_at'], stale)

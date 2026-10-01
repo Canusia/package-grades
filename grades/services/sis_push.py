@@ -147,6 +147,29 @@ def _enqueue_task(ids, user_id):
     send_grades_to_sis.enqueue(ids, user_id)
 
 
+HANDOFF_ERROR = 'Could not hand off to the background task queue.'
+
+
+def _safe_enqueue_task(ids, user_id):
+    """Run `_enqueue_task`, and if it raises, fail those rows instead of
+    leaving them stuck `queued` for 30 minutes.
+
+    Runs inside `transaction.on_commit`, after the rows were already
+    committed as `queued` -- if the task queue hand-off itself fails (e.g.
+    the queue backend is unreachable), the request must not 500 (the rows
+    are already committed, there's nothing left to roll back) and the rows
+    must not sit looking "in flight" when nothing is actually working on
+    them.
+    """
+    try:
+        _enqueue_task(ids, user_id)
+    except Exception:
+        logger.exception(
+            'Could not hand off %d registration(s) to the SIS push queue', len(ids))
+        GradeSISSync.objects.filter(registration_id__in=ids).update(
+            status=GradeSISSync.FAILED, last_error=HANDOFF_ERROR)
+
+
 def _locked_syncs(ids):
     """Existing GradeSISSync rows for `ids`, locked for update.
 
@@ -215,8 +238,17 @@ def enqueue(registration_ids, user):
         if not transitioned:
             return 0
         user_id = user.pk if user else None
-        transaction.on_commit(lambda: _enqueue_task(transitioned, user_id))
-    return len(transitioned)
+        transaction.on_commit(lambda: _safe_enqueue_task(transitioned, user_id))
+
+    # `on_commit` above runs synchronously once this function's own atomic
+    # block is the outermost one (the normal case, and also under
+    # `captureOnCommitCallbacks` in tests) -- so if the hand-off failed,
+    # `_safe_enqueue_task` has already flipped these rows to `failed` by the
+    # time we get here. Count only the rows still actually `queued`, so a
+    # hand-off failure is reported as 0 (a clean message), not as "queued"
+    # rows that are secretly dead.
+    return GradeSISSync.objects.filter(
+        registration_id__in=transitioned, status=GradeSISSync.QUEUED).count()
 
 
 def _current_grade(registration_id):
@@ -276,6 +308,16 @@ def run_push(registration_ids, user_id=None):
         sync, _ = GradeSISSync.objects.get_or_create(
             registration=registration, defaults={'status': GradeSISSync.QUEUED})
         grade = normalize_grade(registration.grade)
+
+        # Heartbeat: stamp last_attempt_at the moment the worker actually
+        # reaches this row, not when it was enqueued. A single UPDATE,
+        # committed immediately (no surrounding atomic block), so it is
+        # visible to other requests before the pusher's HTTP round trip even
+        # starts. Without this, is_in_flight's 30-minute "stale queued"
+        # window measures queue depth (how long a row sat behind other work)
+        # rather than a dead worker, so a long batch makes still-waiting rows
+        # look stale and a second click re-enqueues them.
+        GradeSISSync.objects.filter(pk=sync.pk).update(last_attempt_at=timezone.now())
 
         # The pusher call (an HTTP round-trip to Banner) runs OUTSIDE any
         # savepoint: it must never be rolled back by a later bookkeeping

@@ -14,6 +14,7 @@ except Exception:  # pragma: no cover
 from myce.component_registry.registration import registration_actions, registration_tabs
 
 from ..models import GradeSISSync, GradeSISSyncAttempt
+from ..services import sis_push
 from ..services.sis_push import GradePushResult
 from .sis_fixtures import SISFixtureMixin
 
@@ -27,7 +28,7 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
         if _login_history_post_login is not None:
             user_logged_in.disconnect(_login_history_post_login)
             self.addCleanup(user_logged_in.connect, _login_history_post_login)
-        patcher = patch('grades.grades.services.sis_push.get_pusher', return_value=_pusher)
+        patcher = patch.object(sis_push, 'get_pusher', return_value=_pusher)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.factory = RequestFactory()
@@ -44,7 +45,7 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
         self.assertIn('send_grade_to_sis', slugs)
 
     def test_action_hidden_without_pusher(self):
-        with patch('grades.grades.services.sis_push.get_pusher', return_value=None):
+        with patch.object(sis_push, 'get_pusher', return_value=None):
             slugs = [s for g in registration_actions.for_scope('detail', self.ce_user).values()
                      for s in g['actions']]
         self.assertNotIn('send_grade_to_sis', slugs)
@@ -52,17 +53,30 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
     def test_enqueues_even_when_section_not_submitted(self):
         reg = self.make_registration(self.make_section(grade_status=''))
 
-        with patch('grades.grades.services.sis_push._enqueue_task') as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self._post(reg)
 
         self.assertEqual(resp.status_code, 200)
         task.assert_called_once_with([str(reg.id)], self.ce_user.pk)
 
+    def test_lost_race_reports_already_in_progress(self):
+        """check_single() can pass and then another request queues (or the
+        hand-off to the task queue fails for) the same row before this one's
+        own enqueue() runs: enqueue() returns 0, and the action must say so
+        rather than claiming "Queued" for a row it didn't actually queue."""
+        reg = self.make_registration(self.make_section())
+
+        with patch.object(sis_push, 'enqueue', return_value=0):
+            resp = self._post(reg)
+
+        self.assertIn(b'Already in progress', resp.content)
+        self.assertNotIn(b'Queued.', resp.content)
+
     def test_blank_grade_refused_with_alert(self):
         reg = self.make_registration(self.make_section(), grade='-')
 
-        with patch('grades.grades.services.sis_push._enqueue_task') as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             resp = self._post(reg)
 
         self.assertIn(b'no grade', resp.content)
@@ -74,8 +88,8 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
 
     def test_refused_without_pusher_at_dispatch(self):
         reg = self.make_registration(self.make_section())
-        with patch('grades.grades.services.sis_push.get_pusher', return_value=None), \
-                patch('grades.grades.services.sis_push._enqueue_task') as task:
+        with patch.object(sis_push, 'get_pusher', return_value=None), \
+                patch.object(sis_push, '_enqueue_task') as task:
             resp = self._post(reg)
         self.assertEqual(resp.status_code, 403)
         task.assert_not_called()

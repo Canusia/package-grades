@@ -109,6 +109,11 @@ def send_grade_to_sis(request):
     if reason:
         return JsonResponse({'outcome': 'alert', 'status': 'error',
                              'title': 'Send Grade to SIS', 'message': reason})
-    sis_push.enqueue([registration.pk], request.user)
+    count = sis_push.enqueue([registration.pk], request.user)
+    # enqueue() can return 0 even though check_single() just passed: another
+    # request may have queued (or started processing) this same row in
+    # between. Report what actually happened, not an assumed "Queued".
+    message = ('Queued. Check the Grade SIS tab for the result.' if count else
+               'Already in progress. Check the Grade SIS tab for the result.')
     return JsonResponse({'outcome': 'alert', 'status': 'success', 'title': 'Send Grade to SIS',
-                         'message': 'Queued. Check the Grade SIS tab for the result.'})
+                         'message': message})

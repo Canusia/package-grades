@@ -16,11 +16,10 @@ except Exception:  # pragma: no cover
 
 from ..actions import grade_sis_actions
 from ..models import GradeSISSync, GradeSISSyncAttempt
+from ..services import sis_push
 from ..services.sis_push import GradePushResult
+from ..views.sis_sync import REGISTRATION_COLUMNS
 from .sis_fixtures import SISFixtureMixin
-
-GET_PUSHER = 'grades.grades.services.sis_push.get_pusher'
-ENQUEUE_TASK = 'grades.grades.services.sis_push._enqueue_task'
 
 
 def _pusher(registration, grade, existing_record_id=None):
@@ -48,7 +47,7 @@ class _SISPageBase(SISFixtureMixin, TestCase):
             user_logged_in.disconnect(_login_history_post_login)
             self.addCleanup(user_logged_in.connect, _login_history_post_login)
         self.client.force_login(self.ce_user)
-        patcher = patch(GET_PUSHER, return_value=_pusher)
+        patcher = patch.object(sis_push, 'get_pusher', return_value=_pusher)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -106,7 +105,7 @@ class SISPageTests(_SISPageBase):
         self.assertIn(reg_action['label'], html)
 
     def test_page_shows_not_configured_notice_without_pusher(self):
-        with patch(GET_PUSHER, return_value=None):
+        with patch.object(sis_push, 'get_pusher', return_value=None):
             resp = self.client.get(reverse('grades_ce:sis_sync'))
         self.assertEqual(resp.status_code, 200)
         html = resp.content.decode()
@@ -117,7 +116,8 @@ class SISPageTests(_SISPageBase):
     def test_actions_refused_without_pusher(self):
         section = self.make_section()
         reg = self.make_registration(section)
-        with patch(GET_PUSHER, return_value=None), patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, 'get_pusher', return_value=None), \
+                patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True):
                 r1 = self.post_action('send_sections', [section.id])
                 r2 = self.post_action('send_registrations', [reg.id])
@@ -128,7 +128,7 @@ class SISPageTests(_SISPageBase):
         self.assertFalse(GradeSISSync.objects.exists())
 
     def test_feeds_refused_without_pusher(self):
-        with patch(GET_PUSHER, return_value=None):
+        with patch.object(sis_push, 'get_pusher', return_value=None):
             for name in ('sis-sections-list', 'sis-registrations-list'):
                 resp = self.client.get(reverse(f'grades_ce:{name}') + '?format=datatables')
                 self.assertEqual(resp.status_code, 403, name)
@@ -344,7 +344,7 @@ class SISActionTests(_SISPageBase):
         reg = self.make_registration(submitted)
         draft = self.make_section(grade_status='saved')
 
-        with patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self.post_action('send_sections', [submitted.id, draft.id])
 
@@ -359,7 +359,7 @@ class SISActionTests(_SISPageBase):
         other = self.make_section(term=self.other_term)
         self.make_registration(other)
 
-        with patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 resp = self.post_action('send_sections', [other.id, 'junk'])
 
@@ -377,7 +377,7 @@ class SISActionTests(_SISPageBase):
         GradeSISSync.objects.create(registration=in_flight, status=GradeSISSync.QUEUED,
                                     last_attempt_at=queued_at)
 
-        with patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self.post_action('send_registrations', [good.id, blank.id, in_flight.id])
 
@@ -393,7 +393,7 @@ class SISActionTests(_SISPageBase):
         off_roster = self.make_registration(section, status='dropped')
         other_term = self.make_registration(self.make_section(term=self.other_term))
 
-        with patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 resp = self.post_action('send_registrations',
                                         [off_roster.id, other_term.id, 'junk', ''])
@@ -409,7 +409,7 @@ class SISActionTests(_SISPageBase):
         submitted = self.make_section()
         ok = self.make_registration(submitted)
 
-        with patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self.post_action('send_registrations', [in_draft.id, ok.id])
 
@@ -427,7 +427,7 @@ class SISActionTests(_SISPageBase):
                                     sent_grade='A', last_sent_at=sent_at,
                                     last_attempt_at=sent_at)
 
-        with patch(ENQUEUE_TASK) as task:
+        with patch.object(sis_push, '_enqueue_task') as task:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 resp = self.post_action('send_registrations', [sent.id])
 
@@ -437,3 +437,35 @@ class SISActionTests(_SISPageBase):
         sync = GradeSISSync.objects.get(registration=sent)
         self.assertEqual(sync.status, GradeSISSync.SENT)
         self.assertEqual(sync.last_attempt_at, sent_at)
+
+
+class SISRegistrationOrderingTests(_SISPageBase):
+    def test_last_sent_nulls_sort_last_in_both_directions(self):
+        """Never-sent rows have a NULL last_sent_at. Postgres defaults to
+        nulls-last for ASC but nulls-first for DESC, so the page's default
+        order ([[8, 'desc']]) would otherwise surface never-sent rows first."""
+        section = self.make_section()
+        sent = self.make_registration(section)
+        never_sent = self.make_registration(section)
+        GradeSISSync.objects.create(registration=sent, status=GradeSISSync.SENT,
+                                    sent_grade='A', last_sent_at=timezone.now())
+
+        last_sent_index = next(
+            i for i, col in enumerate(REGISTRATION_COLUMNS)
+            if col.get('name') == 'grade_sis_sync.last_sent_at')
+        base = {'format': 'datatables', 'draw': '1', 'start': '0', 'length': '10'}
+        for i, col in enumerate(REGISTRATION_COLUMNS):
+            base[f'columns[{i}][data]'] = col['data']
+            base[f'columns[{i}][name]'] = col.get('name', '')
+            base[f'columns[{i}][searchable]'] = 'true' if col.get('searchable', True) else 'false'
+            base[f'columns[{i}][orderable]'] = 'true' if col.get('orderable', True) else 'false'
+
+        url = reverse('grades_ce:sis-registrations-list')
+        for direction in ('asc', 'desc'):
+            params = dict(base, **{'order[0][column]': str(last_sent_index),
+                                   'order[0][dir]': direction})
+            resp = self.client.get(url, params)
+            self.assertEqual(resp.status_code, 200, direction)
+            ids = [row['id'] for row in resp.json()['data']]
+            self.assertEqual(ids[-1], str(never_sent.id), direction)
+            self.assertEqual(ids[0], str(sent.id), direction)

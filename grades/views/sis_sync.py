@@ -5,7 +5,7 @@ are defined here and handed to the template through ``json_script``; the page JS
 uses them as-is, so `name` -- the ORM path drf-datatables orders and searches
 on -- is declared once, next to the queryset that has to support it.
 """
-from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -164,6 +164,36 @@ class SISSectionViewSet(viewsets.ReadOnlyModelViewSet):
                                 highschool_ids=_uuid_params(self.request, 'highschool'))
 
 
+LAST_SENT_NAME = 'grade_sis_sync.last_sent_at'
+LAST_SENT_ORM_PATH = 'grade_sis_sync__last_sent_at'
+
+
+def _datatables_sort_direction(request, name):
+    """'asc'/'desc' if the datatables column named `name` is the one being
+    sorted on this request, else None.
+
+    Mirrors how DatatablesFilterBackend itself resolves `order[i][column]`
+    against `columns[i][name]`, so we can rebuild that one column's ordering
+    with `nulls_last` without reimplementing the rest of its logic.
+    """
+    getter = request.query_params.get
+    i = 0
+    while True:
+        col_name = getter(f'columns[{i}][name]')
+        if col_name is None:
+            return None
+        if col_name == name:
+            j = 0
+            while True:
+                idx = getter(f'order[{j}][column]')
+                if idx is None:
+                    return None
+                if idx == str(i):
+                    return 'desc' if getter(f'order[{j}][dir]', 'asc') == 'desc' else 'asc'
+                j += 1
+        i += 1
+
+
 class SISRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SISRegistrationSerializer
     permission_classes = [_PusherRequired]
@@ -174,6 +204,19 @@ class SISRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
             sync_status=[s for s in raw.split(',') if s],
             term_ids=_uuid_params(self.request, 'term'),
             section_ids=_uuid_params(self.request, 'section'))
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        # Never-sent rows have a NULL last_sent_at. Postgres defaults to
+        # nulls-last for ASC but nulls-first for DESC, so the page's default
+        # order ([[8, 'desc']]) surfaces never-sent rows first. Rebuild this
+        # one column's ordering with nulls_last explicit in both directions,
+        # but only when it's actually the column being sorted.
+        direction = _datatables_sort_direction(self.request, LAST_SENT_NAME)
+        if direction:
+            expression = getattr(F(LAST_SENT_ORM_PATH), direction)(nulls_last=True)
+            queryset = queryset.order_by(expression)
+        return queryset
 
 
 def sis_sync_page(request):
