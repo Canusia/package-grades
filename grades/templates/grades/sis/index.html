@@ -1,0 +1,201 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}Grades → SIS{% endblock %}
+{% block body %}
+<main>
+  <h1 class="h3 mb-2 text-gray-800">Grades → SIS</h1>
+  {% if not configured %}
+  <div class="alert alert-info">
+    Sending grades to the SIS is not configured for this site.
+  </div>
+  {% else %}
+  <p class="text-muted mb-3">Send submitted final grades to the SIS. Class and bulk sends only
+    include sections whose grades are submitted. Sends run in the background — reload to see results.</p>
+  {% if config_errors %}
+  <div class="alert alert-danger">{% for e in config_errors %}<div>{{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  {% csrf_token %}
+
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#sis-sections">Sections</a></li>
+    <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#sis-registrations">Registrations</a></li>
+  </ul>
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="sis-sections">
+      <div class="card border-top-0"><div class="card-body">
+        <div class="card mb-3"><div class="card-body bg-gray-200">
+          <div class="form-row">
+            <div class="col-md-4 mb-2">
+              <label for="sis-sections-term-filter">Term</label>
+              <select id="sis-sections-term-filter" class="form-control sis-sections-filter">
+                <option value="">All grade terms</option>
+                {% for term in terms %}<option value="{{ term.id }}">{{ term.code }} {{ term.label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4 mb-2">
+              <label for="sis-sections-highschool-filter">High School</label>
+              <select id="sis-sections-highschool-filter" class="form-control sis-sections-filter">
+                <option value="">All high schools</option>
+                {% for hs in highschools %}<option value="{{ hs.id }}">{{ hs.name }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+        </div></div>
+        <div class="table-responsive">
+          <table id="sis-sections-table" class="table table-striped table-bordered" style="width:100%">
+            <thead><tr>{% for col in section_columns %}<th>{{ col.title }}</th>{% endfor %}</tr></thead>
+          </table>
+        </div>
+      </div></div>
+    </div>
+    <div class="tab-pane fade" id="sis-registrations">
+      <div class="card border-top-0"><div class="card-body">
+        <div class="card mb-3"><div class="card-body bg-gray-200">
+          <div class="form-row">
+            <div class="col-md-4 mb-2">
+              <label for="sis-status-filter">Sync Status</label>
+              <select id="sis-status-filter" class="form-control sis-registrations-filter" multiple>
+                <option value="needs_mirroring" selected>Needs Mirroring</option>
+                <option value="failed" selected>Failed</option>
+                <option value="not_sent">Not Sent</option>
+                <option value="queued">Queued</option>
+                <option value="sent">Sent</option>
+              </select>
+            </div>
+            <div class="col-md-4 mb-2">
+              <label for="sis-registrations-term-filter">Term</label>
+              <select id="sis-registrations-term-filter" class="form-control sis-registrations-filter">
+                <option value="">All grade terms</option>
+                {% for term in terms %}<option value="{{ term.id }}">{{ term.code }} {{ term.label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4 mb-2">
+              <label for="sis-registrations-section-filter">Section</label>
+              <select id="sis-registrations-section-filter" class="form-control sis-registrations-filter">
+                <option value="">All sections</option>
+                {% for cs in filter_sections %}<option value="{{ cs.id }}">{{ cs.term.code }} {{ cs.course.title }} / {{ cs.section_number }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+        </div></div>
+        <div class="table-responsive">
+          <table id="sis-registrations-table" class="table table-striped table-bordered" style="width:100%">
+            <thead><tr>{% for col in registration_columns %}<th>{{ col.title }}</th>{% endfor %}</tr></thead>
+          </table>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</main>
+{{ section_columns|json_script:"sis-sections-columns" }}
+{{ registration_columns|json_script:"sis-registrations-columns" }}
+<script>
+jQuery(function ($) {
+  var actionUrl = '{{ action_url|escapejs }}';
+
+  {% comment %}Buttons come from grade_sis_actions.for_scope('bulk', user): label, icon, class and confirm text live on the registry only.{% endcomment %}
+  var bulkActions = {
+    sections: [
+      {% for slug, action in bulk_actions.sis_sections.actions.items %}
+      { slug: '{{ slug|escapejs }}', label: '{{ action.label|escapejs }}',
+        icon: '{{ action.icon|default:"fas fa-edit"|escapejs }}',
+        btnClass: '{{ action.btn_class|default:"btn-primary"|escapejs }}',
+        confirm: {% if action.confirm %}'{{ action.confirm|escapejs }}'{% else %}null{% endif %} },
+      {% endfor %}
+    ],
+    registrations: [
+      {% for slug, action in bulk_actions.sis_registrations.actions.items %}
+      { slug: '{{ slug|escapejs }}', label: '{{ action.label|escapejs }}',
+        icon: '{{ action.icon|default:"fas fa-edit"|escapejs }}',
+        btnClass: '{{ action.btn_class|default:"btn-primary"|escapejs }}',
+        confirm: {% if action.confirm %}'{{ action.confirm|escapejs }}'{% else %}null{% endif %} },
+      {% endfor %}
+    ]
+  };
+
+  function actionButtons(specs) {
+    return specs.map(function (spec) {
+      return {
+        className: 'btn btn-sm ' + spec.btnClass + ' text-white',
+        text: '<i class="' + spec.icon + '"></i>&nbsp;' + $('<div>').text(spec.label).html(),
+        titleAttr: spec.label,
+        action: function (e, dt) {
+          if (spec.confirm && !confirm(spec.confirm)) return;
+          window.ActionRegistry.doBulkAction(actionUrl, spec.slug, dt);
+        }
+      };
+    });
+  }
+
+  var text = $.fn.dataTable.render.text();
+  var renderers = {
+    id: function () { return ''; },
+    // Built with jQuery so text and attributes are escaped (quotes included).
+    log_url: function (d, t) {
+      if (t !== 'display') return d || '';
+      if (!d) return '';
+      return $('<a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">')
+        .attr('href', d).append('<i class="fa fa-server"></i> SIS log').prop('outerHTML');
+    },
+    last_error: function (d, t) {
+      if (!d) return '';
+      if (t !== 'display') return d;
+      var trim = d.length > 80 ? d.substring(0, 80) + '…' : d;
+      return $('<span>').attr('title', d).text(trim).prop('outerHTML');
+    }
+  };
+
+  {% comment %}Column configs (data / name / orderable / searchable) come verbatim from the view so the ORM paths are declared once.{% endcomment %}
+  function columns(id) {
+    return JSON.parse(document.getElementById(id).textContent).map(function (col) {
+      col.render = renderers[col.data] || text;
+      if (col.data === 'id') { col.defaultContent = ''; }
+      return col;
+    });
+  }
+
+  function val(sel) { var v = $(sel).val(); return Array.isArray(v) ? v.join(',') : (v || ''); }
+
+  $('#sis-sections-table').DataTable({
+    processing: true, serverSide: true, rowId: 'id',
+    ajax: { url: '{{ sections_url|escapejs }}', data: function (d) {
+      d.term = val('#sis-sections-term-filter');
+      d.highschool = val('#sis-sections-highschool-filter');
+    } },
+    order: [[1, 'asc']], lengthMenu: [25, 50, 100], dom: 'Bfrtip',
+    select: { style: 'multi', selector: 'td:first-child' },
+    buttons: actionButtons(bulkActions.sections),
+    columns: columns('sis-sections-columns')
+  });
+
+  $('#sis-registrations-table').DataTable({
+    processing: true, serverSide: true, rowId: 'id',
+    ajax: { url: '{{ registrations_url|escapejs }}', data: function (d) {
+      d.sync_status = val('#sis-status-filter');
+      d.term = val('#sis-registrations-term-filter');
+      d.section = val('#sis-registrations-section-filter');
+    } },
+    order: [[8, 'desc']], lengthMenu: [25, 50, 100], dom: 'Bfrtip',
+    select: { style: 'multi', selector: 'td:first-child' },
+    buttons: actionButtons(bulkActions.registrations).concat([
+      { extend: 'csv', text: '<i class="fas fa-file-csv"></i>&nbsp;CSV (this page)',
+        className: 'btn btn-sm btn-primary text-white',
+        titleAttr: 'Export the rows currently shown',
+        filename: 'grades_sis_registrations_page',
+        exportOptions: { columns: ':not(:first-child):not(:last-child)' } }
+    ]),
+    columns: columns('sis-registrations-columns')
+  });
+
+  $('.sis-sections-filter').on('change', function () {
+    $('#sis-sections-table').DataTable().ajax.reload();
+  });
+  $('.sis-registrations-filter').on('change', function () {
+    $('#sis-registrations-table').DataTable().ajax.reload();
+  });
+  $('a[data-toggle="tab"]').on('shown.bs.tab', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

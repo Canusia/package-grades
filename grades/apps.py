@@ -70,6 +70,7 @@ class GradesConfig(AppConfig):
         """Import signals and tab registrations when the app is ready."""
         from . import signals  # noqa: F401
         from . import tabs  # noqa: F401
+        from . import actions  # noqa: F401
 
 
 class DevGradesConfig(AppConfig):
@@ -92,3 +93,4 @@ class DevGradesConfig(AppConfig):
         """Import signals and tab registrations when the app is ready."""
         from . import signals  # noqa: F401
         from . import tabs  # noqa: F401
+        from . import actions  # noqa: F401
