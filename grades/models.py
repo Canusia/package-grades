@@ -188,3 +188,60 @@ class SectionPeriodStatus(models.Model):
     @property
     def submitted(self):
         return self.status == 'submitted'
+
+
+class GradeSISSync(models.Model):
+    """SIS push state for one registration's final grade.
+
+    No row means the grade has never been sent. `sent_grade` is the value the
+    SIS last accepted; the post_save receiver compares the live grade against
+    it to flag needs_mirroring.
+    """
+    QUEUED = 'queued'
+    SENT = 'sent'
+    FAILED = 'failed'
+    NEEDS_MIRRORING = 'needs_mirroring'
+    STATUS_CHOICES = [
+        (QUEUED, 'Queued'),
+        (SENT, 'Sent'),
+        (FAILED, 'Failed'),
+        (NEEDS_MIRRORING, 'Needs Mirroring'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    registration = models.OneToOneField(
+        'cis.StudentRegistration', on_delete=models.CASCADE,
+        related_name='grade_sis_sync')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, db_index=True)
+    sent_grade = models.CharField(max_length=30, blank=True, default='')
+    sis_record_id = models.UUIDField(blank=True, null=True)
+    last_sent_at = models.DateTimeField(blank=True, null=True)
+    last_sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        blank=True, null=True, related_name='+')
+    last_attempt_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    last_attempt_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        blank=True, null=True, related_name='+')
+    last_error = models.TextField(blank=True, default='')
+    grade_changed_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f'{self.registration_id}: {self.status}'
+
+
+class GradeSISSyncAttempt(models.Model):
+    """Append-only history of pushes: who sent which grade, when, and the outcome."""
+    sync = models.ForeignKey(
+        GradeSISSync, on_delete=models.CASCADE, related_name='attempts')
+    attempted_at = models.DateTimeField()
+    attempted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        blank=True, null=True, related_name='+')
+    grade = models.CharField(max_length=30, blank=True, default='')
+    success = models.BooleanField()
+    error = models.TextField(blank=True, default='')
+    log_url = models.CharField(max_length=500, blank=True, default='')
+
+    class Meta:
+        ordering = ['-attempted_at']
