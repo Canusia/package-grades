@@ -2,6 +2,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.db.models.query import QuerySet
 from django.test import TestCase
 from django.utils import timezone
 
@@ -166,6 +167,34 @@ class EnqueueTests(SISFixtureMixin, TestCase):
         self.assertEqual(count, 0)
         enqueue_task.assert_not_called()
 
+    def _force_one_gradesissync_get_miss(self):
+        """Patch QuerySet.get at the class level so the FIRST .get() issued
+        against a GradeSISSync queryset raises DoesNotExist, and every other
+        call (on any model) behaves normally.
+
+        Patching `GradeSISSync.objects.get` is not enough: `Manager.get`
+        delegates to `self.get_queryset().get(...)`, a *new* QuerySet
+        instance each time, so a patch on the manager's bound method is
+        never actually invoked by `get_or_create`'s internal
+        `self.get(**kwargs)` call (verified: a probe showed the call counter
+        staying at 0). Patching `QuerySet.get` itself intercepts every such
+        call regardless of which queryset instance it runs on.
+
+        Returns the `calls` dict; `calls['n']` is incremented exactly once,
+        the first time the forced miss fires, so the caller can assert the
+        IntegrityError path actually ran.
+        """
+        orig_get = QuerySet.get
+        calls = {'n': 0}
+
+        def fake_get(qs, *args, **kwargs):
+            if qs.model is GradeSISSync and calls['n'] == 0:
+                calls['n'] += 1
+                raise GradeSISSync.DoesNotExist()
+            return orig_get(qs, *args, **kwargs)
+
+        return calls, patch.object(QuerySet, 'get', autospec=True, side_effect=fake_get)
+
     def test_concurrent_first_time_enqueue_integrity_error_is_absorbed(self):
         """Two concurrent first-time enqueue() calls for the same
         registration: this call's existing-rows lookup misses (simulating the
@@ -183,29 +212,51 @@ class EnqueueTests(SISFixtureMixin, TestCase):
         competing = GradeSISSync(registration_id=reg.id, status=GradeSISSync.FAILED)
         competing.save(force_insert=True)
 
-        real_get = GradeSISSync.objects.get
-        calls = {'n': 0}
-
-        def flaky_get(*args, **kwargs):
-            # get_or_create's own existence check: miss once (as if this
-            # transaction's snapshot didn't see the row yet), so it proceeds
-            # to create() and collides for real; subsequent calls behave
-            # normally.
-            calls['n'] += 1
-            if calls['n'] == 1:
-                raise GradeSISSync.DoesNotExist()
-            return real_get(*args, **kwargs)
+        calls, get_patch = self._force_one_gradesissync_get_miss()
 
         with patch.object(sis_push, '_locked_syncs', return_value={}):
-            with patch.object(GradeSISSync.objects, 'get', side_effect=flaky_get):
+            with get_patch:
                 with patch.object(sis_push, '_enqueue_task') as enqueue_task:
                     with self.captureOnCommitCallbacks(execute=True):
                         count = sis_push.enqueue([reg.id], self.ce_user)
 
+        # Proves the forced miss actually fired -- i.e. get_or_create's
+        # create() genuinely collided and raised IntegrityError, rather than
+        # this test silently passing because the row was found some other
+        # way.
+        self.assertEqual(calls['n'], 1)
         self.assertEqual(count, 1)
         enqueue_task.assert_called_once_with([str(reg.id)], self.ce_user.pk)
         self.assertEqual(GradeSISSync.objects.filter(registration=reg).count(), 1)
         self.assertEqual(GradeSISSync.objects.get(registration=reg).status, 'queued')
+
+    def test_concurrent_first_time_enqueue_skips_a_row_the_other_call_queued(self):
+        """Same forced IntegrityError collision as above, but the row the
+        other call already committed is freshly queued (in-flight): this
+        call must skip it -- not re-queue it, not count it, not enqueue it
+        again."""
+        section = self.make_section()
+        reg = self.make_registration(section)
+        attempted_at = timezone.now()
+        competing = GradeSISSync(
+            registration_id=reg.id, status=GradeSISSync.QUEUED,
+            last_attempt_at=attempted_at)
+        competing.save(force_insert=True)
+
+        calls, get_patch = self._force_one_gradesissync_get_miss()
+
+        with patch.object(sis_push, '_locked_syncs', return_value={}):
+            with get_patch:
+                with patch.object(sis_push, '_enqueue_task') as enqueue_task:
+                    with self.captureOnCommitCallbacks(execute=True):
+                        count = sis_push.enqueue([reg.id], self.ce_user)
+
+        self.assertEqual(calls['n'], 1)
+        self.assertEqual(count, 0)
+        enqueue_task.assert_not_called()
+        competing.refresh_from_db()
+        self.assertEqual(competing.status, 'queued')
+        self.assertEqual(competing.last_attempt_at, attempted_at)
 
 
 class RunPushTests(SISFixtureMixin, TestCase):
