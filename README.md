@@ -186,6 +186,80 @@ transcript templates.
 - Grade Distribution by Course (`grade_by_course`)
 - Grade Distribution by Demographics (`grade_by_demographics`)
 
+## SIS grade push
+
+Grades can be pushed to Banner as student-unverified-grades via Ethos. `grades`
+never imports `ethos` directly — it resolves the pusher through the tenant
+seam, so a tenant without a pusher simply doesn't get the Grades → SIS page or
+actions.
+
+### Opting in
+
+A tenant adds `myce_tenant_configs/services/grade_sis_pusher.py` exposing:
+
+- `push_final_grade(registration, grade, existing_record_id=None)` — required.
+- `config_errors()` — optional; returns human-readable configuration problems.
+
+`grades.services.sis_push` resolves these via
+`get_tenant_override('grade_sis_pusher', 'push_final_grade')` /
+`get_tenant_override('grade_sis_pusher', 'config_errors')`. EWU's module
+re-exports `ethos[.ethos].grade_push.push_final_grade` /
+`.config_errors` directly (the editable-submodule `find_spec` conditional, not
+a wrapper).
+
+### The pusher contract
+
+A pusher returns an object with `success`, `record_id`, `error` and `log_url`
+(`grades.services.sis_push.GradePushResult`). **Return failures; don't raise
+them** — `run_push` treats an uncaught exception from the pusher as a failure
+for that one registration, but a pusher that reports its own failures gives a
+cleaner `error` message and `log_url`.
+
+### The Ethos keys in `sis_guids`
+
+Only the FINAL grade type is supported.
+
+| Key | Shape | Required | Notes |
+|---|---|---|---|
+| `final_grade_type` | `{"id": guid}` | yes | The Banner unverified-grade type GUID for FINAL. |
+| `grade_map` | `{"<MyCE grade>": guid}` | yes | One entry per MyCE grade value. Matched exactly, case-sensitive, after `.strip()` on the stored grade. |
+| `grade_submitted_by` | `{"id": guid}` | no | Omitted entirely from the Banner submission (`submittedBy`) when not configured. |
+
+Example:
+
+```json
+{
+  "final_grade_type": {"id": "b5a1..."},
+  "grade_map": {"A": "11aa...", "B+": "22bb...", "F": "33cc..."},
+  "grade_submitted_by": {"id": "44dd..."}
+}
+```
+
+### Adding the CE sidebar link
+
+The CE sidebar is driven by the `cis.settings.menu` DB setting, not by editing
+`cis/menu.py` — hand-editing that file has no effect on the rendered menu. Add
+a sidebar entry for the Grades → SIS page through Settings:
+
+```json
+{"name": "grades_sis_sync", "label": "Grades → SIS", "url": "grades_ce:sis_sync"}
+```
+
+to the CE menu's `classes` group (the page itself highlights `classes` /
+`grades_sis_sync` when rendering its own menu).
+
+### Not configured
+
+When no tenant pusher is installed, `/ce/grades/sis/` renders a "not
+configured" notice instead of the section/registration tables — the page adds
+itself to the sidebar only when a tenant opts in (see above), so a tenant that
+adds the link without the pusher module will see the notice rather than a 500.
+
+### Banner prerequisite
+
+The web entry (student-unverified-grades submission) must be enabled in
+`SOATERM` for the term being graded, or Banner will reject the submission.
+
 ## Tests
 
 ```bash
