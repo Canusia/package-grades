@@ -1,4 +1,5 @@
 """Registration detail: Send Grade to SIS action and Grade SIS history tab."""
+from datetime import datetime, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth.signals import user_logged_in
@@ -92,3 +93,23 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
 
         self.assertEqual(context['sync'], sync)
         self.assertEqual(len(context['attempts']), 1)
+
+    def test_history_tab_renders_local_time(self):
+        reg = self.make_registration(self.make_section())
+        # 20:30 UTC on 30 Sep 2026 is 1:30 PM in America/Los_Angeles (PDT, UTC-7).
+        attempted_at = datetime(2026, 9, 30, 20, 30, tzinfo=dt_timezone.utc)
+        sync = GradeSISSync.objects.create(
+            registration=reg, status='sent', sent_grade='A',
+            last_sent_at=attempted_at, last_sent_by=self.ce_user)
+        GradeSISSyncAttempt.objects.create(
+            sync=sync, attempted_at=attempted_at,
+            attempted_by=self.ce_user, grade='A', success=True)
+        request = self.factory.get('/')
+        request.user = self.ce_user
+
+        resp = registration_tabs.render_tab(request, reg, 'grade_sis')
+        html = resp.content.decode()
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('09/30/2026 1:30 PM', html)
+        self.assertNotIn('8:30 PM', html)
