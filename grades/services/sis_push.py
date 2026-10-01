@@ -241,12 +241,18 @@ def enqueue(registration_ids, user):
         transaction.on_commit(lambda: _safe_enqueue_task(transitioned, user_id))
 
     # `on_commit` above runs synchronously once this function's own atomic
-    # block is the outermost one (the normal case, and also under
-    # `captureOnCommitCallbacks` in tests) -- so if the hand-off failed,
+    # block is the outermost one -- the normal case in real request
+    # handling. Under `captureOnCommitCallbacks` in tests it does NOT run
+    # here: the callback is deferred until that context manager's `with`
+    # block exits, which is typically after this function has already
+    # returned. In the real-request case, if the hand-off failed,
     # `_safe_enqueue_task` has already flipped these rows to `failed` by the
-    # time we get here. Count only the rows still actually `queued`, so a
-    # hand-off failure is reported as 0 (a clean message), not as "queued"
-    # rows that are secretly dead.
+    # time we get here, so counting only the rows still actually `queued`
+    # reports a hand-off failure as 0 (a clean message) rather than as
+    # "queued" rows that are secretly dead. Under the deferred-callback test
+    # path, this count is taken before the callback runs, so callers in
+    # tests must assert hand-off-failure state only after their own
+    # `captureOnCommitCallbacks` block exits.
     return GradeSISSync.objects.filter(
         registration_id__in=transitioned, status=GradeSISSync.QUEUED).count()
 
@@ -299,25 +305,47 @@ def run_push(registration_ids, user_id=None):
     user = get_user_model().objects.filter(pk=user_id).first() if user_id else None
     counts = {'sent': 0, 'failed': 0}
 
-    for reg_id in registration_ids:
+    # The full set of ids handed to this task, in order. Before each row's
+    # pusher call we refresh last_attempt_at for every id still ahead of us
+    # (this one included) -- see the heartbeat comment below for why that is
+    # the whole remaining batch and not just the current row.
+    remaining_ids = list(registration_ids)
+
+    for index, reg_id in enumerate(registration_ids):
         registration = (
             StudentRegistration.objects.select_related('student', 'class_section')
             .filter(pk=reg_id).first())
         if registration is None:
+            remaining_ids = remaining_ids[1:]
             continue
         sync, _ = GradeSISSync.objects.get_or_create(
             registration=registration, defaults={'status': GradeSISSync.QUEUED})
         grade = normalize_grade(registration.grade)
 
-        # Heartbeat: stamp last_attempt_at the moment the worker actually
-        # reaches this row, not when it was enqueued. A single UPDATE,
-        # committed immediately (no surrounding atomic block), so it is
-        # visible to other requests before the pusher's HTTP round trip even
-        # starts. Without this, is_in_flight's 30-minute "stale queued"
-        # window measures queue depth (how long a row sat behind other work)
-        # rather than a dead worker, so a long batch makes still-waiting rows
-        # look stale and a second click re-enqueues them.
-        GradeSISSync.objects.filter(pk=sync.pk).update(last_attempt_at=timezone.now())
+        # Heartbeat: before reaching this row, refresh last_attempt_at for
+        # every row still remaining in this batch (this one included) that
+        # is still `queued` -- not just this one row. A single task works
+        # through the whole batch sequentially, and each push is several
+        # HTTP calls, so a batch can run well past the 30-minute "stale
+        # queued" window while later rows just haven't been reached yet. If
+        # only the current row were stamped, rows further back in the queue
+        # would go stale and bulk_eligible_ids / check_single / enqueue
+        # would treat them as free to re-enqueue while this very task is
+        # still going to push them -- a duplicate send to Banner. Stamping
+        # the whole remaining batch keeps it alive as a unit: the 30-minute
+        # window now means "no worker has touched this batch in 30
+        # minutes" (i.e. the worker is dead or stuck on one call), not
+        # "queue depth". The status filter leaves alone any row already
+        # finished earlier in this batch (sent/failed) and any row someone
+        # else changed out from under us (e.g. no longer queued). Committed
+        # immediately, with no surrounding atomic block, so it is visible to
+        # other requests before the pusher's HTTP round trip even starts;
+        # run_push runs outside a transaction in the worker and the pusher
+        # call itself must never be wrapped in one (see below).
+        GradeSISSync.objects.filter(
+            registration_id__in=remaining_ids, status=GradeSISSync.QUEUED
+        ).update(last_attempt_at=timezone.now())
+        remaining_ids = remaining_ids[1:]
 
         # The pusher call (an HTTP round-trip to Banner) runs OUTSIDE any
         # savepoint: it must never be rolled back by a later bookkeeping

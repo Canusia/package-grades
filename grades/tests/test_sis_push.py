@@ -427,3 +427,119 @@ class RunPushTests(SISFixtureMixin, TestCase):
 
         self.assertIsNotNone(seen['last_attempt_at'])
         self.assertGreater(seen['last_attempt_at'], stale)
+
+    def test_heartbeat_refreshes_whole_remaining_batch_not_just_current_row(self):
+        """A long batch (each push is several HTTP calls) can run past the
+        30-minute stale window before later rows are even reached. If only
+        the row being pushed were stamped, rows 2 and 3 would look stale
+        while row 1's pusher call is still in flight, and bulk_eligible_ids /
+        check_single / enqueue would treat them as free to re-enqueue --
+        a duplicate send to Banner for work this very task is about to do.
+        The fix stamps the whole remaining batch before each pusher call, so
+        rows 2 and 3 must already be fresh (and therefore in-flight) by the
+        time the pusher is invoked for row 1."""
+        section = self.make_section()
+        first = self.make_registration(section, grade='A')
+        second = self.make_registration(section, grade='B')
+        third = self.make_registration(section, grade='C')
+        near_stale = timezone.now() - timedelta(minutes=29)
+        for reg in (first, second, third):
+            GradeSISSync.objects.create(
+                registration=reg, status='queued', last_attempt_at=near_stale)
+
+        seen = {}
+
+        def spy(registration, grade, existing_record_id=None):
+            if registration.pk == first.pk and 'checked' not in seen:
+                seen['checked'] = True
+                syncs = {
+                    s.registration_id: s
+                    for s in GradeSISSync.objects.filter(
+                        registration__in=[first, second, third])
+                }
+                seen['all_fresh'] = all(
+                    syncs[r.pk].last_attempt_at > near_stale for r in (first, second, third))
+                seen['second_in_flight'] = sis_push.is_in_flight(syncs[second.pk])
+                seen['third_in_flight'] = sis_push.is_in_flight(syncs[third.pk])
+            return GradePushResult(True, record_id=RECORD)
+
+        with patch.object(sis_push, 'get_pusher', return_value=spy):
+            sis_push.run_push(
+                [str(first.id), str(second.id), str(third.id)], self.ce_user.pk)
+
+        self.assertTrue(seen.get('checked'))
+        self.assertTrue(seen['all_fresh'])
+        self.assertTrue(seen['second_in_flight'])
+        self.assertTrue(seen['third_in_flight'])
+
+    def test_heartbeat_does_not_touch_rows_already_finished_in_batch(self):
+        """A row already sent/failed earlier in this same batch must not be
+        touched by a later row's heartbeat -- it's done, its last_attempt_at
+        belongs to its own outcome, not to "still in the queue". Exercises
+        the real run_push loop: by the time row `second` is reached, `first`
+        is already `sent` and must come out of the batch with exactly the
+        last_attempt_at _record() gave it, not a later heartbeat stamp."""
+        section = self.make_section()
+        first = self.make_registration(section, grade='A')
+        second = self.make_registration(section, grade='B')
+        seen = {}
+
+        def pusher(registration, grade, existing_record_id=None):
+            if registration.pk == second.pk:
+                seen['first_last_attempt_at'] = GradeSISSync.objects.get(
+                    registration=first).last_attempt_at
+                seen['first_status'] = GradeSISSync.objects.get(
+                    registration=first).status
+            return GradePushResult(True, record_id=RECORD)
+
+        with patch.object(sis_push, 'get_pusher', return_value=pusher):
+            sis_push.run_push([str(first.id), str(second.id)], self.ce_user.pk)
+
+        first_sync = GradeSISSync.objects.get(registration=first)
+        self.assertEqual(first_sync.status, 'sent')
+        # Captured right before second's pusher call (i.e. right after
+        # second's heartbeat update ran): first was already `sent`, so the
+        # heartbeat's QUEUED filter must have left it alone.
+        self.assertEqual(seen['first_status'], 'sent')
+        self.assertEqual(seen['first_last_attempt_at'], first_sync.last_attempt_at)
+
+    def test_heartbeat_does_not_touch_row_someone_else_changed(self):
+        """A row in the batch whose status was changed by someone else (not
+        this task) to something other than queued must not be touched by a
+        later heartbeat -- the status filter is what protects it."""
+        section = self.make_section()
+        first = self.make_registration(section, grade='A')
+        second = self.make_registration(section, grade='B')
+        GradeSISSync.objects.create(
+            registration=second, status='queued',
+            last_attempt_at=timezone.now() - timedelta(minutes=29))
+        marker = timezone.now() - timedelta(minutes=10)
+        seen = {}
+
+        def pusher(registration, grade, existing_record_id=None):
+            if registration.pk == first.pk:
+                # Simulate another process reassigning `second` away from
+                # `queued` (e.g. it got manually failed/flagged) while
+                # `first`'s pusher call is still in flight. first's own
+                # batch-heartbeat (covering both ids) already ran before
+                # this call, while second was still `queued`, so this marker
+                # is what second's own turn must find untouched.
+                GradeSISSync.objects.filter(registration=second).update(
+                    status=GradeSISSync.NEEDS_MIRRORING, last_attempt_at=marker)
+            elif registration.pk == second.pk:
+                # This runs after second's own heartbeat update (scoped to
+                # QUEUED) has already executed for this turn. Since second's
+                # status was NEEDS_MIRRORING (not QUEUED) at that point, the
+                # heartbeat must have left it alone.
+                seen['last_attempt_at'] = GradeSISSync.objects.get(
+                    registration=second).last_attempt_at
+                seen['status'] = GradeSISSync.objects.get(
+                    registration=second).status
+            return GradePushResult(True, record_id=RECORD)
+
+        with patch.object(sis_push, 'get_pusher', return_value=pusher):
+            sis_push.run_push([str(first.id), str(second.id)], self.ce_user.pk)
+
+        self.assertEqual(seen['status'], 'needs_mirroring')
+        self.assertEqual(seen['last_attempt_at'], marker)
+
