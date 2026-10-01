@@ -12,6 +12,7 @@ from django.http import JsonResponse
 
 from cis.utils import user_has_cis_role
 from myce.component_registry import ActionRegistry
+from myce.component_registry.registration import registration_actions
 
 from .services import sis_push
 
@@ -83,3 +84,31 @@ def send_registrations(request):
         skipped = len(set(ids)) - count
         message += f' {skipped} skipped: ' + '; '.join(reasons) + '.'
     return _done(message, 'success' if count else 'info')
+
+
+@registration_actions.action(
+    'sis', slug='send_grade_to_sis', label='Send Grade to SIS', scope=['detail'],
+    icon='fas fa-paper-plane', btn_class='btn-info',
+    confirm="Send this student's final grade to the SIS?",
+    permission=can_push)
+def send_grade_to_sis(request):
+    """Single-student push from the registration detail page.
+
+    Unlike the bulk Registrations-tab action, this ignores the section's
+    grade_status (sis_push.check_single) -- a staff member may need to push
+    one grade before the whole section is submitted.
+    """
+    from cis.models.section import StudentRegistration
+
+    ids = sis_push._parse_ids(request.POST.getlist('ids[]'))
+    registration = StudentRegistration.objects.filter(pk__in=ids[:1]).first()
+    if registration is None:
+        return JsonResponse({'outcome': 'alert', 'status': 'error',
+                             'title': 'Send Grade to SIS', 'message': 'Registration not found.'})
+    reason = sis_push.check_single(registration)
+    if reason:
+        return JsonResponse({'outcome': 'alert', 'status': 'error',
+                             'title': 'Send Grade to SIS', 'message': reason})
+    sis_push.enqueue([registration.pk], request.user)
+    return JsonResponse({'outcome': 'alert', 'status': 'success', 'title': 'Send Grade to SIS',
+                         'message': 'Queued. Check the Grade SIS tab for the result.'})

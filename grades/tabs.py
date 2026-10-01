@@ -9,6 +9,7 @@ Imports of other apps (``myce``, ``cis``) are absolute; intra-package imports
 are relative, because in editable mode this package is ``grades.grades``.
 """
 from myce.component_registry.class_section_index import class_section_index_tabs
+from myce.component_registry.registration import registration_tabs
 from myce.component_registry.term import term_tabs
 
 
@@ -87,3 +88,24 @@ def grading_periods_tab(request, record):
         'grading_periods': GradingPeriod.objects.filter(
             term=record).order_by('sequence', 'name'),
     }
+
+
+def _can_see_grade_sis(user, record):
+    from .actions import can_push
+    return can_push(user)
+
+
+@registration_tabs.tab(slug='grade_sis', title='Grade SIS', order=65,
+                       template='grades/sis/_registration_tab.html',
+                       permission=_can_see_grade_sis)
+def grade_sis_tab(request, record):
+    """SIS push history for one registration's final grade.
+
+    `record` is the StudentRegistration. No sync row means the grade has
+    never been sent.
+    """
+    from .models import GradeSISSync
+
+    sync = GradeSISSync.objects.filter(registration=record).first()
+    attempts = list(sync.attempts.select_related('attempted_by')) if sync else []
+    return {'sync': sync, 'attempts': attempts, 'registration': record}

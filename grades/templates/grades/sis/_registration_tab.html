@@ -1,0 +1,26 @@
+<div class="card border-top-0"><div class="card-body">
+  {% if sync %}
+  <p><strong>Status:</strong> {{ sync.get_status_display }}
+     {% if sync.sent_grade %} · <strong>Sent grade:</strong> {{ sync.sent_grade }}{% endif %}
+     {% if sync.last_sent_at %} · <strong>Last sent:</strong> {{ sync.last_sent_at|date:"m/d/Y g:i A" }}
+       by {{ sync.last_sent_by.get_full_name|default:"—" }}{% endif %}</p>
+  {% if sync.last_error %}<div class="alert alert-danger">{{ sync.last_error }}</div>{% endif %}
+  <table class="table table-sm table-bordered">
+    <thead><tr><th>When</th><th>By</th><th>Grade</th><th>Result</th><th>Error</th><th></th></tr></thead>
+    <tbody>
+    {% for a in attempts %}
+      <tr>
+        <td>{{ a.attempted_at|date:"m/d/Y g:i A" }}</td>
+        <td>{{ a.attempted_by.get_full_name|default:"—" }}</td>
+        <td>{{ a.grade }}</td>
+        <td>{% if a.success %}<span class="badge badge-success">Sent</span>{% else %}<span class="badge badge-danger">Failed</span>{% endif %}</td>
+        <td>{{ a.error }}</td>
+        <td>{% if a.log_url %}<a href="{{ a.log_url }}" target="_blank">SIS log</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted mb-0">This grade has not been sent to the SIS.</p>
+  {% endif %}
+</div></div>
