@@ -235,6 +235,19 @@ Example:
 }
 ```
 
+These keys live inside the SIS GUIDS setting's JSON blob alongside other Ethos
+keys. Rather than hand-editing the blob, use the `ethos` command, which touches
+only these three keys and records the change in the setting's history:
+
+```bash
+python manage.py set_grade_push_guids --final-grade-type <guid> \
+    --grade A=<guid> --grade B+=<guid> --submitted-by <guid> --dry-run
+python manage.py set_grade_push_guids --grade-map-file grades.json   # {"A": "<guid>", ...}
+```
+
+`--grade` entries merge into the existing map; add `--replace-grade-map` to
+start it over. `--clear-submitted-by` removes `grade_submitted_by`.
+
 ### Adding the CE sidebar link
 
 The CE sidebar is driven by the `cis.settings.menu` DB setting, not by editing
