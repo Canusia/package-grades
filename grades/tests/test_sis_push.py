@@ -166,6 +166,47 @@ class EnqueueTests(SISFixtureMixin, TestCase):
         self.assertEqual(count, 0)
         enqueue_task.assert_not_called()
 
+    def test_concurrent_first_time_enqueue_integrity_error_is_absorbed(self):
+        """Two concurrent first-time enqueue() calls for the same
+        registration: this call's existing-rows lookup misses (simulating the
+        other call's insert landing in between), so it falls through to
+        get_or_create(), whose own create() genuinely collides with the row
+        the other call already committed, raising IntegrityError. That error
+        must not escape enqueue() -- it must fall back to the real row,
+        re-lock it, and queue it exactly once."""
+        section = self.make_section()
+        reg = self.make_registration(section)
+
+        # Simulate: the other request's enqueue() already committed a sync
+        # row for this registration, by inserting one directly (bypassing
+        # the manager, so it doesn't go through this test's own patches).
+        competing = GradeSISSync(registration_id=reg.id, status=GradeSISSync.FAILED)
+        competing.save(force_insert=True)
+
+        real_get = GradeSISSync.objects.get
+        calls = {'n': 0}
+
+        def flaky_get(*args, **kwargs):
+            # get_or_create's own existence check: miss once (as if this
+            # transaction's snapshot didn't see the row yet), so it proceeds
+            # to create() and collides for real; subsequent calls behave
+            # normally.
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise GradeSISSync.DoesNotExist()
+            return real_get(*args, **kwargs)
+
+        with patch.object(sis_push, '_locked_syncs', return_value={}):
+            with patch.object(GradeSISSync.objects, 'get', side_effect=flaky_get):
+                with patch.object(sis_push, '_enqueue_task') as enqueue_task:
+                    with self.captureOnCommitCallbacks(execute=True):
+                        count = sis_push.enqueue([reg.id], self.ce_user)
+
+        self.assertEqual(count, 1)
+        enqueue_task.assert_called_once_with([str(reg.id)], self.ce_user.pk)
+        self.assertEqual(GradeSISSync.objects.filter(registration=reg).count(), 1)
+        self.assertEqual(GradeSISSync.objects.get(registration=reg).status, 'queued')
+
 
 class RunPushTests(SISFixtureMixin, TestCase):
     def _run(self, pusher, reg):

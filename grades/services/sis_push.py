@@ -133,6 +133,20 @@ def _enqueue_task(ids, user_id):
     send_grades_to_sis.enqueue(ids, user_id)
 
 
+def _locked_syncs(ids):
+    """Existing GradeSISSync rows for `ids`, locked for update.
+
+    `.order_by('pk')` gives multi-id batches a consistent lock order so two
+    overlapping `enqueue()` calls over intersecting id sets can't deadlock
+    against each other.
+    """
+    return {
+        str(s.registration_id): s
+        for s in GradeSISSync.objects.select_for_update()
+            .filter(registration_id__in=ids).order_by('pk')
+    }
+
+
 def enqueue(registration_ids, user):
     """Mark registrations queued and enqueue the background push after commit.
 
@@ -142,30 +156,46 @@ def enqueue(registration_ids, user):
     concurrent requests for the same registration cannot both reach the SIS.
     `select_for_update` on the existing rows makes that check atomic against
     a concurrent `enqueue` call racing to the same rows.
+
+    A registration with no sync row yet can't be locked by that query (there
+    is nothing to lock), so two concurrent first-time `enqueue()` calls can
+    both see no row and both attempt to create one. `get_or_create` absorbs
+    that race: it wraps its insert in its own savepoint and, on the unique
+    constraint's `IntegrityError`, falls back to fetching the row the other
+    call just created instead of letting the error escape. When this call
+    loses that race (`created` is False), the row it gets back is re-fetched
+    with `select_for_update` and put through the same in-flight check -- a
+    row the other request just queued must be skipped here too, not
+    re-queued or re-enqueued.
     """
     ids = list(dict.fromkeys(str(i) for i in registration_ids))
     if not ids:
         return 0
     now = timezone.now()
     with transaction.atomic():
-        existing = {
-            str(s.registration_id): s
-            for s in GradeSISSync.objects.select_for_update().filter(registration_id__in=ids)
-        }
+        existing = _locked_syncs(ids)
         transitioned = []
         for reg_id in ids:
             sync = existing.get(reg_id)
-            if sync is not None and is_in_flight(sync, now):
-                continue  # already queued and fresh elsewhere; don't re-enqueue
             if sync is None:
-                GradeSISSync.objects.create(
-                    registration_id=reg_id, status=GradeSISSync.QUEUED,
-                    last_attempt_at=now, last_attempt_by=user)
-            else:
-                sync.status = GradeSISSync.QUEUED
-                sync.last_attempt_at = now
-                sync.last_attempt_by = user
-                sync.save()
+                sync, created = GradeSISSync.objects.get_or_create(
+                    registration_id=reg_id,
+                    defaults={'status': GradeSISSync.QUEUED,
+                              'last_attempt_at': now, 'last_attempt_by': user})
+                if created:
+                    transitioned.append(reg_id)
+                    continue
+                # Lost the race: another request's enqueue() (or run_push())
+                # got there first. Lock the real row and decide fresh.
+                sync = GradeSISSync.objects.select_for_update().get(pk=sync.pk)
+
+            if is_in_flight(sync, now):
+                continue  # already queued and fresh elsewhere; don't re-enqueue
+
+            sync.status = GradeSISSync.QUEUED
+            sync.last_attempt_at = now
+            sync.last_attempt_by = user
+            sync.save()
             transitioned.append(reg_id)
 
         if not transitioned:
