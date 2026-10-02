@@ -13,6 +13,7 @@ from crispy_forms.layout import Submit
 
 from cis.models.term import Term
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.course import Course, Campus
 from cis.models.student import Student
 from cis.models.section import StudentRegistration
@@ -127,9 +128,7 @@ class grade_by_demographics(forms.Form):
         self.helper.add_input(Submit('submit', 'Generate Report'))
 
         self.fields['term'].queryset = Term.objects.all().order_by('-code')
-        self.fields['highschools'].queryset = HighSchool.objects.filter(
-            status__iexact='active'
-        ).order_by('name')
+        self.fields['highschools'].queryset = picker_queryset()
         self.fields['courses'].queryset = Course.objects.all().order_by('name')
 
         if self.request:
