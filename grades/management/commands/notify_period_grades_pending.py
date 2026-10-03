@@ -14,6 +14,7 @@ from django.core.management.base import BaseCommand
 
 from cis.signals.crontab import cron_task_done, cron_task_started
 
+from ...services.reminders import REMINDERS_OFF, reminders_enabled
 from ...services.period_reminders import notify_sections_pending_period_grade
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,8 @@ class Command(BaseCommand):
             scheduled_time=time
         )
 
-        result = notify_sections_pending_period_grade()
+        result = (notify_sections_pending_period_grade() if reminders_enabled()
+                  else (REMINDERS_OFF, {}))
 
         if result is None:
             # No grades-due subject configured; nothing can be sent.

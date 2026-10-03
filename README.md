@@ -180,6 +180,25 @@ and controls the grade scale and GPA points, the submission window (`start_date`
 grading `terms`, the grades-due / grades-submitted email templates and the unofficial
 transcript templates.
 
+Switches added for the Grades Configuration Workbook (#2). A row saved before they
+existed behaves as if each were at its default, because `from_db()` fills them only
+when the key is absent.
+
+| Key | Default | Effect |
+|---|---|---|
+| `is_active` | Yes | Master switch for all grades email: Yes / Debug / No. Every sender goes through `services/email.py::send_grades_mail`. With Django `DEBUG` on, Yes acts as Debug. |
+| `debug_email_list` | '' | Recipients in Debug mode (comma-separated). Debug with an empty list sends nothing. |
+| `notify_instructor_on_submit` | Yes | Email the instructor when grade status becomes `submitted`. |
+| `grades_submitted_cc` | '' | Addresses copied on every grades-submitted email, even when the instructor copy is off. |
+| `send_grade_reminders` | Yes | When No, `notify_grades_pending` and `notify_period_grades_pending` no-op, and `cron` is optional. The CronTab rows are left in place, which keeps their run history. |
+| `student_grades_visible` | Yes | When No, the student Grades page shows a notice instead of the table. (The table's data endpoint, `/student/api/registrations/`, belongs to the student app and is not gated here.) |
+| `student_transcript_enabled` | Yes | When No, the download button is hidden and `/student/grades/download/` returns 404. |
+
+`terms` stores term UUIDs. The settings schema's `terms` choices (`(id, str(term))`)
+are the source of truth for tools that select terms by name. A settings-API
+`?dry_run=1` leaves the CronTab rows untouched, because the API rolls the whole
+write back.
+
 ## Reports
 
 - Grade Distribution by High School (`grade_by_highschool`)

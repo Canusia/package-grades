@@ -16,10 +16,44 @@ from cis.models.settings import Setting
 from cis.validators import validate_html_short_code, validate_cron
 
 
+YES_NO = [('Yes', 'Yes'), ('No', 'No')]
+
+# Keys added for the Grades Configuration Workbook (#2). from_db() fills these
+# only when absent, so a row saved before they existed keeps behaving as it did.
+NEW_KEY_DEFAULTS = {
+    'is_active': 'Yes',
+    'debug_email_list': '',
+    'notify_instructor_on_submit': 'Yes',
+    'grades_submitted_cc': '',
+    'send_grade_reminders': 'Yes',
+    'student_grades_visible': 'Yes',
+    'student_transcript_enabled': 'Yes',
+}
+
+
 class SettingForm(forms.Form):
 
     class Media:
         js = ('grades/js/settings.js',)
+
+    is_active = forms.ChoiceField(
+        choices=[
+            ('Yes', 'Yes - send grades emails'),
+            ('Debug', 'Debug - send only to the debug list'),
+            ('No', 'No - send no grades emails'),
+        ],
+        label='Send Grades Emails',
+        help_text=(
+            'Master switch for every grades email (submitted confirmation and '
+            'grades-due reminders). On a server running with DEBUG, Yes behaves as Debug.'
+        ),
+    )
+
+    debug_email_list = forms.CharField(
+        required=False,
+        label='Debug Email List',
+        help_text='Comma-separated addresses that receive grades emails in Debug mode.',
+    )
 
     grade_scale = forms.CharField(
         required=False,
@@ -83,8 +117,15 @@ class SettingForm(forms.Form):
         })
     )
 
+    send_grade_reminders = forms.ChoiceField(
+        choices=YES_NO,
+        label='Send Grades-Due Reminders',
+        help_text='When No, neither grades-due nor grading-period reminders are sent.',
+    )
+
     cron = forms.CharField(
         max_length=20,
+        required=False,  # required only when reminders are on; see clean()
         help_text='Min Hr Day Month WeekDay',
         label="When should the notification be sent?",
         validators=[validate_cron]
@@ -136,12 +177,39 @@ class SettingForm(forms.Form):
         label="Grades Submitted - Email Subject"
     )
 
+    notify_instructor_on_submit = forms.ChoiceField(
+        choices=YES_NO,
+        label='Email the Instructor When Grades Are Submitted',
+        help_text='When No, the instructor gets no confirmation email.',
+    )
+
+    grades_submitted_cc = forms.CharField(
+        required=False,
+        label='Grades Submitted - Copy To',
+        help_text=(
+            'Comma-separated addresses (e.g. a shared CE inbox) that receive a copy of '
+            'every grades-submitted email. Sent even when the instructor copy is off.'
+        ),
+    )
+
     grades_submitted_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
         help_text='Email template sent to instructor after final grades are submitted. Customize with {{instructor_first_name}}, {{instructor_last_name}}, {{course}}, {{class_number}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted_email\')" >See Preview</a>',
         label="Grades Submitted - Email"
+    )
+
+    student_grades_visible = forms.ChoiceField(
+        choices=YES_NO,
+        label='Students Can See Their Grades',
+        help_text='When No, the student Grades page shows a notice instead of the grades table.',
+    )
+
+    student_transcript_enabled = forms.ChoiceField(
+        choices=YES_NO,
+        label='Students Can Download the Unofficial Transcript',
+        help_text='When No, the download button is hidden and the download link is disabled.',
     )
 
     transcript_template_header = forms.CharField(
@@ -233,6 +301,30 @@ class SettingForm(forms.Form):
             pass  # start_date or end_date parsing failed, skip validation
 
         return reminder_dates_str
+
+    def clean_grades_submitted_cc(self):
+        return self._clean_addresses('grades_submitted_cc')
+
+    def clean_debug_email_list(self):
+        return self._clean_addresses('debug_email_list')
+
+    def _clean_addresses(self, name):
+        from ..services.email import invalid_addresses, parse_addresses
+        value = self.cleaned_data.get(name, '')
+        bad = invalid_addresses(value)
+        if bad:
+            raise ValidationError(_('Not a valid email address: %s') % ', '.join(bad))
+        return ', '.join(parse_addresses(value))
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('send_grade_reminders') == 'Yes' and not cleaned.get('cron') \
+                and 'cron' not in self.errors:
+            self.add_error('cron', _('Required when grades-due reminders are on.'))
+        if cleaned.get('is_active') == 'Debug' and not cleaned.get('debug_email_list') \
+                and 'debug_email_list' not in self.errors:
+            self.add_error('debug_email_list', _('Debug mode needs at least one address.'))
+        return cleaned
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -359,19 +451,23 @@ class SettingForm(forms.Form):
         Return dict of form elements from $_POST
         """
 
-        cron, created = CronTab.objects.get_or_create(
-            command='notify_grades_pending'
-        )
-        cron.cron = self.cleaned_data.get('cron')
-        cron.save()
+        # With reminders off the CronTab rows are left as they are: deleting them
+        # would cascade away their run history, and both commands no-op on the
+        # setting anyway (#2).
+        if self.cleaned_data.get('send_grade_reminders') == 'Yes':
+            cron, created = CronTab.objects.get_or_create(
+                command='notify_grades_pending'
+            )
+            cron.cron = self.cleaned_data.get('cron')
+            cron.save()
 
-        # Grading-period reminders run on the same schedule; the command is a
-        # no-op on tenants that have defined no periods.
-        period_cron, created = CronTab.objects.get_or_create(
-            command='notify_period_grades_pending'
-        )
-        period_cron.cron = self.cleaned_data.get('cron')
-        period_cron.save()
+            # Grading-period reminders run on the same schedule; the command is a
+            # no-op on tenants that have defined no periods.
+            period_cron, created = CronTab.objects.get_or_create(
+                command='notify_period_grades_pending'
+            )
+            period_cron.cron = self.cleaned_data.get('cron')
+            period_cron.save()
 
         # Parse grade_scale and derive grades + gpa_points for backward compatibility
         grade_scale = self._parse_grade_scale(self.cleaned_data.get('grade_scale', ''))
@@ -389,8 +485,16 @@ class SettingForm(forms.Form):
             'roster_not_confirmed_message': self.cleaned_data.get(
                 'roster_not_confirmed_message', ''),
 
+            'is_active': self.cleaned_data['is_active'],
+            'debug_email_list': self.cleaned_data.get('debug_email_list', ''),
+            'notify_instructor_on_submit': self.cleaned_data['notify_instructor_on_submit'],
+            'grades_submitted_cc': self.cleaned_data.get('grades_submitted_cc', ''),
+            'send_grade_reminders': self.cleaned_data['send_grade_reminders'],
+            'student_grades_visible': self.cleaned_data['student_grades_visible'],
+            'student_transcript_enabled': self.cleaned_data['student_transcript_enabled'],
+
             'reminder_dates': self.cleaned_data.get('reminder_dates', ''),
-            'cron': self.cleaned_data['cron'],
+            'cron': self.cleaned_data.get('cron', ''),
             'grades_due_subject': self.cleaned_data['grades_due_subject'],
             'grades_due_email': self.cleaned_data['grades_due_email'],
 
@@ -532,6 +636,7 @@ class class_section_grades(SettingForm):
     </div>
 </div>''',
             'transcript_registration_status': ['registered'],
+            **NEW_KEY_DEFAULTS,
         }
 
         Setting.install_defaults(self.key, defaults)
@@ -628,9 +733,12 @@ class class_section_grades(SettingForm):
             for key, default_value in defaults.items():
                 if key not in values or not values.get(key):
                     values[key] = default_value
+            # Absent only: '' and 'No' are real choices for these (#2).
+            for key, default_value in NEW_KEY_DEFAULTS.items():
+                values.setdefault(key, default_value)
             return values
         except Setting.DoesNotExist:
-            return cls.get_transcript_defaults()
+            return {**cls.get_transcript_defaults(), **NEW_KEY_DEFAULTS}
 
     def run_record(self):
         try:

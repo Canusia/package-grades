@@ -9,12 +9,20 @@ is preserved exactly, including the early ``return None`` when no subject is set
 """
 import datetime
 
-from django.conf import settings
 from django.core.validators import validate_email
 from django.template import Context, Template
 from django.template.loader import get_template
 
-from mailer import send_html_mail
+from .email import send_grades_mail
+
+
+REMINDERS_OFF = 'Grade reminders are turned off'
+
+
+def reminders_enabled():
+    """`send_grade_reminders` (#2); absent means Yes, as before the setting existed."""
+    from ..settings.class_section_grades import class_section_grades
+    return class_section_grades.from_db().get('send_grade_reminders', 'Yes') == 'Yes'
 
 
 def needs_reminder():
@@ -93,9 +101,6 @@ def notify_sections_pending_grade(*args, **kwargs):
         except:
             continue
 
-        if getattr(settings, 'DEBUG', True):
-            send_to = ['kadaji@gmail.com']
-
         message = Template(email_text)
         context = Context({
             'teacher_first_name': pending_grade['teacher__user__first_name'],
@@ -111,13 +116,7 @@ def notify_sections_pending_grade(*args, **kwargs):
             'message': text_body
         })
 
-        send_html_mail(
-            email_subject,
-            text_body,
-            html_body,
-            settings.DEFAULT_FROM_EMAIL,
-            send_to
-        )
+        send_grades_mail(configs, email_subject, text_body, html_body, send_to)
 
         # Add note to each of this teacher's pending sections
         teacher_sections = all_pending_sections.filter(

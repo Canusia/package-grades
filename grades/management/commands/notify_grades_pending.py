@@ -14,6 +14,8 @@ from cis.signals.crontab import cron_task_done, cron_task_started
 logger = logging.getLogger(__name__)
 
 from ...services.reminders import (
+    REMINDERS_OFF,
+    reminders_enabled,
     needs_reminder,
     notify_sections_pending_grade
 )
@@ -41,7 +43,10 @@ class Command(BaseCommand):
             scheduled_time=time
         )
 
-        if needs_reminder():
+        if not reminders_enabled():
+            summary = REMINDERS_OFF
+            detailed_log = {}
+        elif needs_reminder():
             summary, detailed_log = notify_sections_pending_grade(*args, **kwargs)
         else:
             summary = 'Does not need grades reminder'

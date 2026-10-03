@@ -5,13 +5,19 @@ Displays grades and transcripts for authenticated students.
 """
 from django.shortcuts import render
 from django.template import Context, Template
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 
 from cis.menu import draw_menu, STUDENT_MENU
 from cis.settings.student_portal import student_portal as portal_lang
 
 from student.views.decorators import verify_account_complete
 from student.views.utils import get_current_student
+
+
+def _setting(name):
+    """Student-portal switches (#2); absent means Yes, as before they existed."""
+    from ..settings.class_section_grades import class_section_grades
+    return class_section_grades.from_db().get(name, 'Yes') == 'Yes'
 
 
 def grades(request):
@@ -35,6 +41,8 @@ def grades(request):
         {
             'intro': intro,
             'student': student,
+            'grades_visible': _setting('student_grades_visible'),
+            'transcript_enabled': _setting('student_transcript_enabled'),
             'request': request,
             'menu': draw_menu(STUDENT_MENU, 'grades', '', 'student')
         })
@@ -55,6 +63,9 @@ def download_transcript(request):
 
     Supports ?mode=page query parameter to return HTML preview instead of PDF.
     """
+    if not _setting('student_transcript_enabled'):
+        raise Http404('The unofficial transcript is not available.')
+
     student = get_current_student(request)
 
     pdf = student.generate_unofficial_transcript(request=request)

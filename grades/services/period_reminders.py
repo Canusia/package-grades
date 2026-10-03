@@ -46,12 +46,11 @@ See docs/superpowers/specs/2026-08-02-grades-grading-periods-design.md
 """
 import datetime
 
-from django.conf import settings
 from django.core.validators import validate_email
 from django.template import Context, Template
 from django.template.loader import get_template
 
-from mailer import send_html_mail
+from .email import send_grades_mail
 
 from ..models import GradingPeriod, SectionPeriodStatus
 
@@ -137,8 +136,6 @@ def _send_period_reminder(period, teacher_user, num_sections, configs, today):
         return False
 
     send_to = [teacher_email]
-    if getattr(settings, 'DEBUG', True):
-        send_to = ['kadaji@gmail.com']
 
     message = Template(email_text or '')
     context = Context({
@@ -155,14 +152,7 @@ def _send_period_reminder(period, teacher_user, num_sections, configs, today):
     template = get_template('cis/email.html')
     html_body = template.render({'message': text_body})
 
-    send_html_mail(
-        email_subject,
-        text_body,
-        html_body,
-        settings.DEFAULT_FROM_EMAIL,
-        send_to
-    )
-    return True
+    return bool(send_grades_mail(configs, email_subject, text_body, html_body, send_to))
 
 
 def notify_sections_pending_period_grade(today=None, *args, **kwargs):
