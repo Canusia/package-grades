@@ -13,7 +13,11 @@ from django.urls import reverse
 from rest_framework import viewsets
 
 from cis.menu import draw_menu
-from cis.services.settings_overview import profile_exists
+try:
+    from cis.services.settings_overview import profile_exists
+except ImportError:  # cis < 0.1.17a has no settings overview
+    def profile_exists(name):
+        return False
 from cis.utils import CIS_user_only
 
 from ..actions import grade_sis_actions
