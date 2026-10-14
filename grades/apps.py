@@ -47,6 +47,17 @@ _REPORTS_BASE = [
             'ce'
         ]
     },
+    {
+        'name': 'class_grade_status',
+        'title': 'Class Grade Status',
+        'description': 'One row per class with its grade status (Not Started, Draft, Submitted), instructor, and how many students are graded',
+        'categories': [
+            'Classes'
+        ],
+        'available_for': [
+            'ce'
+        ]
+    },
 ]
 
 
