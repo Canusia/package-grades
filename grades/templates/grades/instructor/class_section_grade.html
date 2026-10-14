@@ -1,6 +1,7 @@
 {% extends "cis/logged-base.html" %}
 {%block title %}Instructor Class Details{% endblock %}
 
+{% load static %}
 {% load templatehelpers %}
 {% load crispy_forms_tags %}
 {% block body %}
@@ -71,8 +72,10 @@
 
                 <div class="col-md-7">
 
-                    {# Grading period selector. Absent entirely when the term
-                       defines no periods, which is the pre-periods behaviour. #}
+                    {% comment %}
+                    Grading period selector. Absent entirely when the term
+                    defines no periods, which is the pre-periods behaviour.
+                    {% endcomment %}
                     {% if periods %}
                     <ul class="nav nav-tabs mb-0">
                         {% for p in periods %}
@@ -111,23 +114,22 @@
                                     </div>
                                     {% endif %}
                                     <div class="table-responsive">
-                                        <table class="table table-striped">
+                                        <table class="table table-striped js-sortable-roster">
                                             <thead>
                                                 <tr>
-                                                    <th>Student</th>
-                                                    <th>EMPLID</th>
+                                                    {% include "grades/instructor/_roster_sort_headers.html" %}
                                                     <th>Grade</th>
                                                     <th>Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {% for student in students_in_class %}
-                                                <tr>
-                                                    <td>{{student.student.user.first_name}}
-                                                        {{student.student.user.last_name}}
-                                                    </td>
-
-                                                    <td>{{student.student.user.psid}}</td>
+                                                <tr data-last-name="{{student.student.user.last_name}}"
+                                                    data-first-name="{{student.student.user.first_name}}"
+                                                    data-psid="{{student.student.user.psid|default:''}}">
+                                                    <td>{{student.student.user.last_name}}</td>
+                                                    <td>{{student.student.user.first_name}}</td>
+                                                    <td class="psid">{{student.student.user.psid|default:''}}</td>
                                                     <td>{{student.grade}}</td>
                                                     <td>{{student.status|capfirst}}</td>
                                                 </tr>
@@ -144,33 +146,42 @@
                                 <div class="card-header"><h3>Grade Roster<a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3> </div>
                                 <div class="card-body">
                                     {{message|safe}}
-                                    <form action="" method="post">
+                                    <form action="" method="post"{% if period_status != 'submitted' %} data-autosave="1"{% endif %}>
                                         {{ grade_formset.management_form }}
                                         {% csrf_token %}
                                         <div class="table-responsive">
-                                            <table class="table table-striped">
+                                            <table class="table table-striped js-sortable-roster">
                                                 <thead>
                                                     <tr>
-                                                        <th>Student</th>
+                                                        {% include "grades/instructor/_roster_sort_headers.html" %}
                                                         <th>Grade</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {% for form in grade_formset %}
-                                                    <tr>
+                                                    <tr data-last-name="{{form.initial.last_name}}"
+                                                        data-first-name="{{form.initial.first_name}}"
+                                                        data-psid="{{form.initial.psid}}">
                                                         <td>
-                                                            {{form.student.value}}
+                                                            {{form.initial.last_name}}
                                                             {{form.student_id}}
                                                             {{form.student}}
                                                         </td>
-                                                        <td>{{form.grade|as_crispy_field}}</td>
+                                                        <td>{{form.initial.first_name}}</td>
+                                                        <td class="psid">{{form.initial.psid}}</td>
+                                                        <td>
+                                                            {{form.grade|as_crispy_field}}
+                                                            <small class="autosave-status text-muted" aria-live="polite"></small>
+                                                        </td>
                                                     </tr>
                                                     {% endfor %}
+                                                </tbody>
 
                                                 {% if period_status != 'submitted' %}
                                                 <tfoot>
                                                     <tr>
-                                                        <td colspan=2 class="text-right">
+                                                        <td colspan=4 class="text-right">
+                                                            <small class="autosave-summary text-muted mr-2" aria-live="polite">Grades save automatically as a draft.</small>
                                                             <input type="hidden" name="action" value="save_grade">
                                                             <input type="submit" name='save_grade' class="btn btn-secondary btn-sm"
                                                                 value="Save Grades as 'Draft'">
@@ -180,13 +191,6 @@
                                                         </td>
                                                     </tr>
                                                 </tfoot>
-                                                <script>
-                                                    jQuery(document).ready(function($) {
-                                                        $('select').change(function() {
-                                                            
-                                                        });
-                                                    })
-                                                </script>
                                                 {% else %}
                                                     <script>
                                                         jQuery(document).ready(function($) {
@@ -194,7 +198,6 @@
                                                         });
                                                     </script>
                                                 {% endif %}
-                                                </tbody>
                                             </table>
                                         </div>
                                     </form>
@@ -208,4 +211,5 @@
             </div>
         </div>
 </main>
+<script src="{% static 'grades/instructor/js/grade_roster.js' %}"></script>
 {% endblock %}

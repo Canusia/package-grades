@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.contrib import messages
 from django.forms.formsets import formset_factory
 
@@ -48,6 +48,54 @@ def class_grades(request):
         })
 
 
+def _is_autosave(request):
+    """An XHR draft save posted by the roster's auto-save, not a form submit."""
+    return (
+        request.headers.get('x-requested-with') == 'XMLHttpRequest'
+        and 'Draft' in request.POST.get('save_grade', '')
+    )
+
+
+def _autosave(request, GradeFS, grade_data, class_section, period,
+              roster_gate_ok, roster_gate_message, window_open, period_status):
+    """Save the roster as a draft and answer with JSON instead of the page.
+
+    Same gates and the same write as "Save Grades as 'Draft'", plus one the
+    page only enforces by disabling the selects: nothing is saved once the
+    grades are submitted.
+    """
+    if not roster_gate_ok:
+        return JsonResponse(
+            {'ok': False, 'error': roster_gate_message}, status=403)
+    if not window_open:
+        return JsonResponse(
+            {'ok': False, 'error': 'Grade submission is currently closed.'},
+            status=403)
+    if period_status == 'submitted':
+        return JsonResponse(
+            {'ok': False, 'error': 'These grades have already been submitted.'},
+            status=409)
+
+    gradeformset = GradeFS(
+        request.POST,
+        initial=grade_data,
+        class_section=class_section,
+        period=period,
+        user=request.user
+    )
+    for form in gradeformset.forms:
+        form.fields['grade'].required = False
+
+    if not gradeformset.is_valid():
+        return JsonResponse(
+            {'ok': False, 'error': 'Some grades could not be saved.',
+             'errors': gradeformset.errors}, status=400)
+
+    gradeformset.save()
+    set_status(class_section, period, 'saved')
+    return JsonResponse({'ok': True, 'status': 'saved'})
+
+
 def class_section_grade(request, record_id):
     menu = draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor')
     # PT-32: scope to the requesting instructor's own sections (IDOR fix).
@@ -81,7 +129,12 @@ def class_section_grade(request, record_id):
         {
             'student_id': registration.id,
             'grade': existing_marks.get(registration.id, ''),
-            'student': registration.student.user.last_name + ', ' + registration.student.user.first_name
+            'student': registration.student.user.last_name + ', ' + registration.student.user.first_name,
+            # Sort keys for the roster table. Not form fields: the form ignores
+            # unknown initial keys, the template reads them off form.initial.
+            'first_name': registration.student.user.first_name,
+            'last_name': registration.student.user.last_name,
+            'psid': registration.student.user.psid or '',
         }
         for registration in students_in_class
     ]
@@ -100,6 +153,11 @@ def class_section_grade(request, record_id):
         period=period,
         user=request.user
     )
+
+    if request.method == 'POST' and _is_autosave(request):
+        return _autosave(
+            request, GradeFS, grade_data, class_section_info, period,
+            roster_gate_ok, roster_gate_message, window_open, period_status)
 
     if request.method == 'POST':
         # The real gate. The read-only rendering above is a courtesy; a POST is

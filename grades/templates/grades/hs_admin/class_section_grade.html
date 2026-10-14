@@ -78,8 +78,10 @@
 
                 <div class="col-md-7">
 
-                    {# Grading period selector. Absent entirely when the term
-                       defines no periods, which is the pre-periods behaviour. #}
+                    {% comment %}
+                    Grading period selector. Absent entirely when the term
+                    defines no periods, which is the pre-periods behaviour.
+                    {% endcomment %}
                     {% if periods %}
                     <ul class="nav nav-tabs mb-0">
                         {% for p in periods %}
