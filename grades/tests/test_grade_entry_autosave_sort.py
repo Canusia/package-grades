@@ -211,3 +211,12 @@ class ClassGradesListStatusTests(SimpleTestCase):
                   / 'static/grades/instructor/js/grades.js').read_text()
         self.assertIn("'saved': '<span class=\"badge badge-secondary\">Draft</span>'", source)
         self.assertIn("'submitted': '<span class=\"badge badge-success\">Submitted</span>'", source)
+
+
+
+class SectionsGradesTabTests(SimpleTestCase):
+    """The Grades tab on /ce/sections/ shows in the tab bar, not only via #grades."""
+
+    def test_grades_tab_is_not_hidden(self):
+        from myce.component_registry.class_section_index import class_section_index_tabs
+        self.assertFalse(class_section_index_tabs._tabs['grades']['hidden'])

@@ -15,7 +15,7 @@ from myce.component_registry.term import term_tabs
 
 @class_section_index_tabs.tab(slug='grades', title='Grades', order=20,
                               template='grades/partials/_sections_grades_tab.html',
-                              lazy=False, hidden=True)
+                              lazy=False)
 def sections_grades_tab(request, record):
     """Grade statistics for the CE class-sections list page.
 
