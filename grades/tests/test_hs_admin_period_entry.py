@@ -166,6 +166,53 @@ class HSAdminPeriodGradeEntryTests(TestCase):
             'save_grade': 'Submit',
         })
 
+    def _autosave(self, section, registration, grade='B'):
+        return self.client.post(self._url(section), data={
+            'form-TOTAL_FORMS': '1',
+            'form-INITIAL_FORMS': '1',
+            'form-MIN_NUM_FORMS': '0',
+            'form-MAX_NUM_FORMS': '1000',
+            'form-0-student': 'Hs, Student',
+            'form-0-student_id': str(registration.id),
+            'form-0-grade': grade,
+            'action': 'save_grade',
+            'save_grade': "Save Grades as 'Draft'",
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+    # -- auto-save and sortable roster ---------------------------------------
+
+    def test_own_school_autosave_saves_draft(self):
+        section, registration = self._section()
+
+        resp = self._autosave(section, registration, grade='C')
+
+        registration.refresh_from_db()
+        section.refresh_from_db()
+        self.assertEqual(registration.grade, 'C')
+        self.assertEqual(section.grade_status, 'saved')
+        self.assertEqual(resp.json(), {'ok': True, 'status': 'saved'})
+
+    def test_cross_school_autosave_does_not_write(self):
+        section, registration = self._section(highschool=self.hs_other)
+
+        resp = self._autosave(section, registration, grade='C')
+
+        registration.refresh_from_db()
+        section.refresh_from_db()
+        self.assertEqual(registration.grade, 'A')
+        self.assertEqual(section.grade_status, '')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_page_wires_autosave_and_sorting(self):
+        section, _registration = self._section()
+
+        resp = self.client.get(self._url(section))
+
+        self.assertContains(resp, 'data-autosave="1"')
+        self.assertContains(resp, 'data-sort-key="psid"')
+        self.assertContains(resp, 'grades/js/grade_roster.js')
+        self.assertNotContains(resp, 'Grading period selector')
+
     # -- own school: the page works -----------------------------------------
 
     def test_own_school_get_renders(self):

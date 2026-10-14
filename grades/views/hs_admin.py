@@ -34,6 +34,7 @@ from cis.settings.highschool_admin_portal import (
 
 from ..forms.section import ClassSectionGradeFormSet, ClassSectionGradeForm
 from ..services.roster import students_for_grades
+from .grade_entry import autosave, is_autosave, roster_row
 from ..services.gating import can_enter_grades
 from ..services.periods import (
     periods_for_section,
@@ -102,11 +103,7 @@ def class_section_grade(request, record_id):
     settings = class_section_grades.from_db()
     existing_marks = grades_for(class_section_info, period, students_in_class)
     grade_data = [
-        {
-            'student_id': registration.id,
-            'grade': existing_marks.get(registration.id, ''),
-            'student': registration.student.user.last_name + ', ' + registration.student.user.first_name
-        }
+        roster_row(registration, existing_marks.get(registration.id, ''))
         for registration in students_in_class
     ]
 
@@ -124,6 +121,11 @@ def class_section_grade(request, record_id):
         period=period,
         user=request.user
     )
+
+    if is_autosave(request):
+        return autosave(
+            request, GradeFS, grade_data, class_section_info, period,
+            roster_gate_ok, roster_gate_message, window_open, period_status)
 
     if request.method == 'POST':
         if not roster_gate_ok:

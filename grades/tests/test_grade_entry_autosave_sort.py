@@ -190,7 +190,7 @@ class GradeEntryAutosaveSortTests(TestCase):
     def test_page_wires_autosave(self):
         response = self.client.get(self.url)
         self.assertContains(response, 'data-autosave="1"')
-        self.assertContains(response, 'grades/instructor/js/grade_roster.js')
+        self.assertContains(response, 'grades/js/grade_roster.js')
 
     # --- sortable roster -----------------------------------------------------
 
@@ -201,3 +201,13 @@ class GradeEntryAutosaveSortTests(TestCase):
         self.assertContains(response, 'data-psid="300"')
         self.assertContains(response, 'data-sort-key="psid"')
         self.assertContains(response, '<td class="psid">100</td>', html=False)
+
+
+class ClassGradesListStatusTests(SimpleTestCase):
+    """instructor/grades/ labels grade_status as Draft / Submitted."""
+
+    def test_list_labels_draft_and_submitted(self):
+        source = (Path(__file__).resolve().parent.parent
+                  / 'static/grades/instructor/js/grades.js').read_text()
+        self.assertIn("'saved': '<span class=\"badge badge-secondary\">Draft</span>'", source)
+        self.assertIn("'submitted': '<span class=\"badge badge-success\">Submitted</span>'", source)

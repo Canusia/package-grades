@@ -1,5 +1,5 @@
 /*
- * Instructor grade roster: sortable columns and auto-save.
+ * Grade roster (instructor and HS admin): sortable columns and auto-save.
  *
  * Sorting only reorders <tr> elements. Each row keeps its own formset inputs
  * (form-N-student_id / form-N-grade), so the order on screen never changes
@@ -13,7 +13,7 @@
 (function () {
     'use strict';
 
-    var SORT_STORAGE_KEY = 'grades.instructor.roster.sort';
+    var SORT_STORAGE_KEY = 'grades.roster.sort';
     var DRAFT_VALUE = "Save Grades as 'Draft'";
 
     // --- sorting -----------------------------------------------------------

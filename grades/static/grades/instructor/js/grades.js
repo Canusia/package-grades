@@ -29,7 +29,12 @@ $(document).ready(function () {
             },
             {
                 'render': function (data, type, row, meta) {
-                    var status = row.grade_status ? row.grade_status.toUpperCase() : '-';
+                    // 'saved' is a draft; nothing saved yet leaves it blank.
+                    var labels = {
+                        'submitted': '<span class="badge badge-success">Submitted</span>',
+                        'saved': '<span class="badge badge-secondary">Draft</span>'
+                    };
+                    var status = labels[row.grade_status] || '<span class="text-muted">Not started</span>';
 
                     // Roster confirmation gate: flag the section rather than
                     // hiding it, so an instructor can see why it is not

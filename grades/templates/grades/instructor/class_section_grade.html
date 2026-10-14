@@ -117,7 +117,7 @@
                                         <table class="table table-striped js-sortable-roster">
                                             <thead>
                                                 <tr>
-                                                    {% include "grades/instructor/_roster_sort_headers.html" %}
+                                                    {% include "grades/_roster_sort_headers.html" %}
                                                     <th>Grade</th>
                                                     <th>Status</th>
                                                 </tr>
@@ -153,7 +153,7 @@
                                             <table class="table table-striped js-sortable-roster">
                                                 <thead>
                                                     <tr>
-                                                        {% include "grades/instructor/_roster_sort_headers.html" %}
+                                                        {% include "grades/_roster_sort_headers.html" %}
                                                         <th>Grade</th>
                                                     </tr>
                                                 </thead>
@@ -211,5 +211,5 @@
             </div>
         </div>
 </main>
-<script src="{% static 'grades/instructor/js/grade_roster.js' %}"></script>
+<script src="{% static 'grades/js/grade_roster.js' %}"></script>
 {% endblock %}
