@@ -13,6 +13,7 @@ from django.urls import reverse
 from rest_framework import viewsets
 
 from cis.menu import draw_menu
+from cis.services.settings_overview import profile_exists
 from cis.utils import CIS_user_only
 
 from ..actions import grade_sis_actions
@@ -230,6 +231,9 @@ def sis_sync_page(request):
         'menu': draw_menu(None, 'classes', 'grades_sis_sync', 'ce'),
         'configured': sis_push.get_pusher() is not None,
     }
+    # The tenant's Ethos Settings overview holds the SIS push configuration.
+    context['settings_url'] = (reverse('cis:settings_overview', args=['ethos'])
+                               if profile_exists('ethos') else '')
     if not context['configured']:
         return render(request, 'grades/sis/index.html', context)
 

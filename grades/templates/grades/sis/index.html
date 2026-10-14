@@ -2,7 +2,10 @@
 {% block title %}Grades → SIS{% endblock %}
 {% block body %}
 <main>
-  <h1 class="h3 mb-2 text-gray-800">Grades → SIS</h1>
+  <div class="d-flex align-items-center mb-2">
+    <h1 class="h3 mb-0 text-gray-800">Grades → SIS</h1>
+    {% if settings_url %}<a class="btn btn-sm btn-outline-secondary ml-auto" href="{{ settings_url }}"><i class="fas fa-cog"></i> Settings</a>{% endif %}
+  </div>
   {% if not configured %}
   <div class="alert alert-info">
     Sending grades to the SIS is not configured for this site.
@@ -11,7 +14,8 @@
   <p class="text-muted mb-3">Send submitted final grades to the SIS. Class and bulk sends only
     include sections whose grades are submitted. Sends run in the background — reload to see results.</p>
   {% if config_errors %}
-  <div class="alert alert-danger">{% for e in config_errors %}<div>{{ e }}</div>{% endfor %}</div>
+  <div class="alert alert-danger">{% for e in config_errors %}<div>{{ e }}</div>{% endfor %}
+    {% if settings_url %}<div class="mt-1">Fix in <a href="{{ settings_url }}">Ethos Settings</a>.</div>{% endif %}</div>
   {% endif %}
   {% csrf_token %}
 

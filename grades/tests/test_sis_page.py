@@ -18,6 +18,7 @@ from ..actions import grade_sis_actions
 from ..models import GradeSISSync, GradeSISSyncAttempt
 from ..services import sis_push
 from ..services.sis_push import GradePushResult
+from ..views import sis_sync as sis_sync_view
 from ..views.sis_sync import REGISTRATION_COLUMNS
 from .sis_fixtures import SISFixtureMixin
 
@@ -70,6 +71,22 @@ class _SISPageBase(SISFixtureMixin, TestCase):
 
 
 class SISPageTests(_SISPageBase):
+    def test_settings_link_when_ethos_profile_exists(self):
+        with patch.object(sis_sync_view, 'profile_exists', return_value=True):
+            resp = self.client.get(reverse('grades_ce:sis_sync'))
+        self.assertContains(resp, reverse('cis:settings_overview', args=['ethos']))
+
+    def test_no_settings_link_without_profile(self):
+        with patch.object(sis_sync_view, 'profile_exists', return_value=False):
+            resp = self.client.get(reverse('grades_ce:sis_sync'))
+        self.assertNotContains(resp, '/ce/settings-overview/ethos/')
+
+    def test_config_error_alert_links_to_settings(self):
+        with patch.object(sis_sync_view, 'profile_exists', return_value=True), \
+             patch.object(sis_push, 'get_config_errors', return_value=['x is not set.']):
+            resp = self.client.get(reverse('grades_ce:sis_sync'))
+        self.assertContains(resp, 'Fix in')
+
     def test_page_renders_for_ce(self):
         resp = self.client.get(reverse('grades_ce:sis_sync'))
         self.assertEqual(resp.status_code, 200)
