@@ -1,6 +1,7 @@
 {% comment %}
 Student grades page body. Context: grades_visible, transcript_enabled (#2 settings
-student_grades_visible / student_transcript_enabled).
+student_grades_visible / student_transcript_enabled), grade_columns (#1 setting
+student_grade_columns; js/grades.js reads the same list from #grade-columns).
 {% endcomment %}
 <div class="card bg-white">
     <div class="card-body pt-3">
@@ -15,18 +16,16 @@ student_grades_visible / student_transcript_enabled).
         </div>
         {% endif %}
         <div class="table-responsive">
-            <table style="width: 100%" class="table dataTable table-striped" id="student_class_registrations">
+            <table style="width: 100%" class="table dataTable table-striped" id="student_class_registrations"
+                   data-rows-url="{% url 'student:grades_rows' %}">
                 <thead>
                     <tr>
-                        <th data-name='class_section.term.code' data-data='class_section.term.code'>Term</th>
-                        <th data-data='class_section.class_number' data-name='class_section.class_number'>Course / Section No.</th>
-                        <th data-data="class_section.tuition" data-name="class_section.tuition">Tuition</th>
-                        <th data-data="status_pretty" data-name="status_pretty">Status</th>
-                        <th data-data="submitted_grade" data-name="submitted_grade">Submitted Grade</th>
+                        {% for column in grade_columns %}<th>{{ column.title }}</th>{% endfor %}
                     </tr>
                 </thead>
             </table>
         </div>
+        {{ grade_columns|json_script:"grade-columns" }}
         {% endif %}
     </div>
 </div>

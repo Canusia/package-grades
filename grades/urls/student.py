@@ -6,7 +6,7 @@ Included in student/urls.py under /student/ path.
 from django.urls import path
 from django.contrib.auth.decorators import user_passes_test
 
-from ..views.student import grades, transcripts, download_transcript
+from ..views.student import grades, grades_rows, transcripts, download_transcript
 
 
 def user_has_student_role(user):
@@ -22,6 +22,11 @@ def user_has_student_role(user):
 
 urlpatterns = [
     path('grades/', grades, name='grades'),
+    path(
+        'grades/rows/',
+        user_passes_test(user_has_student_role, login_url='/')(grades_rows),
+        name='grades_rows'
+    ),
     path(
         'grades/download/',
         user_passes_test(user_has_student_role, login_url='/')(download_transcript),

@@ -16,6 +16,7 @@ from cis.models.settings import Setting
 from cis.validators import validate_html_short_code, validate_cron
 
 from ..compat import install_defaults
+from ..services import student_table
 
 
 YES_NO = [('Yes', 'Yes'), ('No', 'No')]
@@ -31,6 +32,7 @@ NEW_KEY_DEFAULTS = {
     'student_grades_visible': 'Yes',
     'student_transcript_enabled': 'Yes',
     'hs_admin_grade_entry': 'No',
+    'student_grade_columns': student_table.DEFAULT,
 }
 
 
@@ -213,6 +215,14 @@ class SettingForm(forms.Form):
         choices=YES_NO,
         label='Students Can Download the Unofficial Transcript',
         help_text='When No, the download button is hidden and the download link is disabled.',
+    )
+
+    student_grade_columns = forms.MultipleChoiceField(
+        choices=student_table.CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        label='Student Grades Table Columns',
+        help_text='Columns shown on the student portal Grades page. A column '
+                  'left unchecked is not sent to the browser either.',
     )
 
     hs_admin_grade_entry = forms.ChoiceField(

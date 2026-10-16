@@ -1,57 +1,25 @@
 /**
- * Student Grades/Registrations DataTable
+ * Student Grades DataTable
  *
- * Initializes a DataTable for displaying student class registrations
- * with status=registered filter.
+ * Columns come from the #grade-columns JSON the template renders from
+ * services.student_table (the student_grade_columns setting), so the <th> row
+ * and this config cannot drift. Rows come from student:grades_rows, already
+ * HTML-escaped and limited to those columns.
  */
 (function($) {
     'use strict';
 
-    var tbl_student_class_registrations;
-
     $(document).ready(function() {
-        tbl_student_class_registrations = $('#student_class_registrations').DataTable({
-            ajax: '/student/api/registrations/?status=registered&format=datatables',
+        var columns = JSON.parse(document.getElementById('grade-columns').textContent);
+
+        $('#student_class_registrations').DataTable({
+            ajax: $('#student_class_registrations').data('rows-url'),
             lengthMenu: [50, 100],
             searching: false,
-            columns: [
-                {
-                    searchable: false,
-                    orderable: false,
-                    render: function(data, type, row, meta) {
-                        return row.class_section.term.label;
-                    }
-                },
-                {
-                    width: '20%',
-                    render: function(data, type, row, meta) {
-                        return row.class_section.course.name +
-                            ' (' + row.class_section.course.credit_hours + ' credits)<br>' +
-                            '<span class="text-muted">' + row.class_section.course.title + '</span><br>' +
-                            row.class_section.class_number + ' - ' + row.class_section.section_number + '<br>' +
-                            row.class_section.highschool_course_name;
-                    }
-                },
-                {
-                    render: function(data, type, row, meta) {
-                        return '$' + parseFloat(row.class_section.tuition).toFixed(2);
-                    }
-                },
-                {
-                    sortable: false,
-                    searchable: false,
-                    render: function(data, type, row, meta) {
-                        return row.status_pretty;
-                    }
-                },
-                {
-                    sortable: false,
-                    searchable: false,
-                    render: function(data, type, row, meta) {
-                        return row.submitted_grade;
-                    }
-                }
-            ]
+            order: [],
+            columns: columns.map(function(column) {
+                return {data: column.key};
+            })
         });
     });
 

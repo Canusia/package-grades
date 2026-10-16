@@ -5,13 +5,15 @@ Displays grades and transcripts for authenticated students.
 """
 from django.shortcuts import render
 from django.template import Context, Template
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 
 from cis.menu import draw_menu, STUDENT_MENU
 from cis.settings.student_portal import student_portal as portal_lang
 
 from student.views.decorators import verify_account_complete
 from student.views.utils import get_current_student
+
+from ..services import student_table
 
 
 def _setting(name):
@@ -43,9 +45,27 @@ def grades(request):
             'student': student,
             'grades_visible': _setting('student_grades_visible'),
             'transcript_enabled': _setting('student_transcript_enabled'),
+            'grade_columns': student_table.enabled_columns(),
             'request': request,
             'menu': draw_menu(STUDENT_MENU, 'grades', '', 'student')
         })
+
+
+def grades_rows(request):
+    """Rows for the grades table: the student's registered classes, with only
+    the enabled columns (#1)."""
+    if not _setting('student_grades_visible'):
+        return JsonResponse({'data': []})
+
+    from cis.models.section import StudentRegistration
+
+    registrations = StudentRegistration.objects.filter(
+        student=get_current_student(request), status='registered',
+    ).select_related(
+        'class_section__term', 'class_section__course',
+    ).order_by('class_section__term__code', 'class_section__class_number')
+    return JsonResponse({'data': student_table.rows(
+        registrations, student_table.enabled_columns())})
 
 
 def transcripts(request):

@@ -212,8 +212,10 @@ when the key is absent.
 | `notify_instructor_on_submit` | Yes | Email the instructor when grade status becomes `submitted`. |
 | `grades_submitted_cc` | '' | Addresses copied on every grades-submitted email, even when the instructor copy is off. |
 | `send_grade_reminders` | Yes | When No, `notify_grades_pending` and `notify_period_grades_pending` no-op, and `cron` is optional. The CronTab rows are left in place, which keeps their run history. |
-| `student_grades_visible` | Yes | When No, the student Grades page shows a notice instead of the table. (The table's data endpoint, `/student/api/registrations/`, belongs to the student app and is not gated here.) |
+| `student_grades_visible` | Yes | When No, the student Grades page shows a notice instead of the table, and its feed `/student/grades/rows/` returns no rows. |
 | `student_transcript_enabled` | Yes | When No, the download button is hidden and `/student/grades/download/` returns 404. |
+| `student_grade_columns` | all five | Columns on the student Grades table (Term, Course / Section No., Tuition, Status, Submitted Grade). One list, `services/student_table.py::COLUMNS`, builds the `<th>` row, the DataTables config and the `/student/grades/rows/` feed; a column that is off is not sent to the browser. (#1) |
+| `hs_admin_grade_entry` | No | When Yes, HS admins get a Grades tab on their class-section page and `grades_highschool_admin:class_section_grade` answers; when No, that URL 404s. (#3) |
 
 `terms` stores term UUIDs. The settings schema's `terms` choices (`(id, str(term))`)
 are the source of truth for tools that select terms by name. A settings-API
