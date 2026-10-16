@@ -19,6 +19,7 @@ from django.contrib.auth import get_user_model
 from django.db import models, transaction
 from django.utils import timezone
 
+from ..compat import get_tenant_override
 from ..models import GradeSISSync, GradeSISSyncAttempt
 from .roster import students_for_grades
 from .window import grade_terms
@@ -38,13 +39,11 @@ class GradePushResult:
 
 def get_pusher():
     """The tenant's push_final_grade callable, or None when not configured."""
-    from cis.services.tenant_services import get_tenant_override
     return get_tenant_override('grade_sis_pusher', 'push_final_grade')
 
 
 def get_config_errors():
     """Pusher-reported configuration problems ([] when none or not supported)."""
-    from cis.services.tenant_services import get_tenant_override
     fn = get_tenant_override('grade_sis_pusher', 'config_errors')
     return fn() if fn else []
 

@@ -13,8 +13,8 @@ from crispy_forms.layout import Submit
 
 from cis.models.term import Term
 from cis.models.highschool import HighSchool
-from cis.highschool_scope import picker_queryset
 from cis.models.section import StudentRegistration
+from ..compat import picker_queryset
 from ..settings.class_section_grades import class_section_grades
 
 

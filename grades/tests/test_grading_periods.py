@@ -7,6 +7,7 @@ collections -- so it must hold even when a write bypasses the form.
 
 See docs/superpowers/specs/2026-08-02-grades-grading-periods-design.md
 """
+import unittest
 from datetime import date
 
 from django.db import IntegrityError, transaction
@@ -82,6 +83,9 @@ class GradingPeriodConstraintTests(TestCase):
         self.assertEqual(names, ['First', 'Second', 'Third'])
 
 
+@unittest.skipUnless(
+    any(f.name == 'parent' for f in Term._meta.get_fields()),
+    'this cis has no subterms (Term.parent)')
 class GradingPeriodSubtermTests(TestCase):
     """Sections follow their own term's periods, never a parent term's.
 

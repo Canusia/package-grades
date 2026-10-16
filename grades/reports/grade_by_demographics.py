@@ -13,11 +13,10 @@ from crispy_forms.layout import Submit
 
 from cis.models.term import Term
 from cis.models.highschool import HighSchool
-from cis.highschool_scope import picker_queryset
 from cis.models.course import Course, Campus
 from cis.models.student import Student
 from cis.models.section import StudentRegistration
-from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
+from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -129,13 +128,10 @@ class grade_by_demographics(forms.Form):
 
         self.fields['term'].queryset = Term.objects.all().order_by('-code')
         self.fields['highschools'].queryset = picker_queryset()
+        apply_campus_field(self, getattr(self.request, 'user', None))
         self.fields['courses'].queryset = Course.objects.all().order_by('name')
 
         if self.request:
-            # Populate the campus selector with only the campuses the
-            # requesting user may process (superusers see all).
-            self.fields['campus'].queryset = get_accessible_campuses(
-                self.request.user)
             self.helper.form_action = reverse_lazy(
                 'report:run_report', args=[request.GET.get('report_id')]
             )

@@ -8,14 +8,19 @@ simply never registers these tabs.
 Imports of other apps (``myce``, ``cis``) are absolute; intra-package imports
 are relative, because in editable mode this package is ``grades.grades``.
 """
-from myce.component_registry.class_section_index import class_section_index_tabs
-from myce.component_registry.registration import registration_tabs
-from myce.component_registry.term import term_tabs
+from .compat import register, registry
+
+# Each registry is optional: a host whose myce predates one skips that tab.
+class_section_index_tabs = registry(
+    'myce.component_registry.class_section_index', 'class_section_index_tabs')
+registration_tabs = registry(
+    'myce.component_registry.registration', 'registration_tabs')
+term_tabs = registry('myce.component_registry.term', 'term_tabs')
 
 
-@class_section_index_tabs.tab(slug='grades', title='Grades', order=20,
-                              template='grades/partials/_sections_grades_tab.html',
-                              lazy=False)
+@register(class_section_index_tabs, 'tab', slug='grades', title='Grades',
+          order=20, template='grades/partials/_sections_grades_tab.html',
+          lazy=False)
 def sections_grades_tab(request, record):
     """Grade statistics for the CE class-sections list page.
 
@@ -73,8 +78,8 @@ def sections_grades_tab(request, record):
     }
 
 
-@term_tabs.tab(slug='grading_periods', title='Grading Periods', order=100,
-               template='grades/ce/_grading_periods_tab.html')
+@register(term_tabs, 'tab', slug='grading_periods', title='Grading Periods',
+          order=100, template='grades/ce/_grading_periods_tab.html')
 def grading_periods_tab(request, record):
     """CE staff configuration of a term's grade collections.
 
@@ -95,9 +100,9 @@ def _can_see_grade_sis(user, record):
     return can_push(user)
 
 
-@registration_tabs.tab(slug='grade_sis', title='Grade SIS', order=65,
-                       template='grades/sis/_registration_tab.html',
-                       permission=_can_see_grade_sis)
+@register(registration_tabs, 'tab', slug='grade_sis', title='Grade SIS',
+          order=65, template='grades/sis/_registration_tab.html',
+          permission=_can_see_grade_sis)
 def grade_sis_tab(request, record):
     """SIS push history for one registration's final grade.
 
@@ -109,3 +114,4 @@ def grade_sis_tab(request, record):
     sync = GradeSISSync.objects.filter(registration=record).first()
     attempts = list(sync.attempts.select_related('attempted_by')) if sync else []
     return {'sync': sync, 'attempts': attempts, 'registration': record}
+

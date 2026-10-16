@@ -1,8 +1,14 @@
 """Campus-scoped school pickers on the grade reports (cis HighSchoolCampus)."""
+import unittest
 import uuid
 
 from django.conf import settings
 from django.test import TestCase, override_settings
+
+from ..compat import has_module
+
+if not has_module('cis.highschool_scope'):
+    raise unittest.SkipTest('cis.highschool_scope not in this cis (cis < 0.1.7a)')
 
 from cis.campus_context import campus_context
 from cis.models.course import Campus

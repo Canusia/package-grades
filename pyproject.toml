@@ -13,8 +13,12 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "Django>=3.2",
-    "myce_cis>=0.1.7a",
 ]
+
+[project.optional-dependencies]
+# Multi-campus cis. Optional: tenants with an in-repo cis install without it
+# and grades falls back (see grades/compat.py).
+campus = ["myce_cis>=0.1.7a"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

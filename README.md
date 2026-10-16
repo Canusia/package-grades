@@ -84,8 +84,28 @@ drops `notify_grades_pending` from the wheel.
 `webapp/requirements.txt`:
 
 ```
-git+https://github.com/Canusia/package-grades.git@2026.1.0
+git+https://github.com/Canusia/package-grades.git@v0.0.11
 ```
+
+`myce_cis` is **not** a required dependency, so the package installs on tenants
+that keep `cis` in their own repo. Tenants on the `myce_cis` package can pull it
+in through the `campus` extra (`myce_grades[campus]`).
+
+#### Older `cis` / `myce`
+
+`grades/compat.py` checks with `find_spec` for the newer host modules and falls
+back when one is missing:
+
+| Missing module | Without it |
+|---|---|
+| `cis.campus_gate` | Reports have no Campus field and are not campus-scoped |
+| `cis.highschool_scope` | School pickers list active schools by name |
+| `cis.services.tenant_services.get_tenant_override` | SIS push is not configured (hidden) |
+| `Setting.install_defaults` | `install()` merges missing keys itself |
+| `myce.component_registry.{class_section_index,term,registration}` | That tab/action is not registered |
+
+The host must still provide `myce.component_registry` itself (`ActionRegistry`)
+— mstc, wpunj and wvup don't, and can't run grades until they do.
 
 ### 2. INSTALLED_APPS
 

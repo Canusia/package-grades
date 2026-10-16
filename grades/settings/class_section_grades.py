@@ -15,6 +15,8 @@ from cis.models.section import StudentRegistration
 from cis.models.settings import Setting
 from cis.validators import validate_html_short_code, validate_cron
 
+from ..compat import install_defaults
+
 
 YES_NO = [('Yes', 'Yes'), ('No', 'No')]
 
@@ -639,7 +641,7 @@ class class_section_grades(SettingForm):
             **NEW_KEY_DEFAULTS,
         }
 
-        Setting.install_defaults(self.key, defaults)
+        install_defaults(Setting, self.key, defaults)
 
     @classmethod
     def get_transcript_defaults(cls):

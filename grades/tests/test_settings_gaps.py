@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.signals import user_logged_in
 from django.http import Http404, HttpRequest
+from django.urls import Resolver404, resolve
 from django.test import RequestFactory, TestCase, override_settings
 
 from mailer.models import Message
@@ -196,6 +197,10 @@ class SettingsAPITest(_Fixture):
             user_logged_in.connect(_login_history_post_login)
 
     def setUp(self):
+        try:
+            resolve(f'/api/v1/settings/{KEY}/')
+        except Resolver404:
+            self.skipTest("this host's setting package has no settings API")
         try:
             from setting.setting.models.setting import SettingRecord
         except ImportError:  # pragma: no cover - installed package layout

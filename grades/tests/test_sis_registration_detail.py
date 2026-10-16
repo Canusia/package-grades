@@ -1,4 +1,5 @@
 """Registration detail: Send Grade to SIS action and Grade SIS history tab."""
+import unittest
 from datetime import datetime, timezone as dt_timezone
 from unittest.mock import patch
 
@@ -10,6 +11,11 @@ try:
     from django_login_history.models import post_login as _login_history_post_login
 except Exception:  # pragma: no cover
     _login_history_post_login = None
+
+from ..compat import has_module
+
+if not has_module('myce.component_registry.registration'):
+    raise unittest.SkipTest('this host has no registration tab/action registry')
 
 from myce.component_registry.registration import registration_actions, registration_tabs
 

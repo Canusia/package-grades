@@ -22,8 +22,7 @@ from crispy_forms.layout import Submit
 from cis.models.term import Term
 from cis.models.course import Campus
 from cis.models.section import ClassSection, StudentRegistration
-from cis.highschool_scope import picker_queryset
-from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
+from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
 from ..services.roster import roster_statuses
 
 
@@ -101,13 +100,12 @@ class class_grade_status(forms.Form):
 
         self.fields['term'].queryset = Term.objects.all().order_by('-code')
         self.fields['highschools'].queryset = picker_queryset()
+        apply_campus_field(self, getattr(self.request, 'user', None))
 
         if self.request:
             self.helper.form_action = reverse_lazy(
                 'report:run_report', args=[request.GET.get('report_id')]
             )
-            self.fields['campus'].queryset = get_accessible_campuses(
-                self.request.user)
 
     def get_result(self, data, user=None):
         statuses = [s for s in (data.get('grade_status') or []) if s in STATUS_LABELS]

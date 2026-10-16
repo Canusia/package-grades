@@ -12,9 +12,13 @@ from django.http import JsonResponse
 
 from cis.utils import user_has_cis_role
 from myce.component_registry import ActionRegistry
-from myce.component_registry.registration import registration_actions
 
+from .compat import register, registry
 from .services import sis_push
+
+# Optional: a host whose myce has no registration registry gets no detail action.
+registration_actions = registry(
+    'myce.component_registry.registration', 'registration_actions')
 
 grade_sis_actions = ActionRegistry()
 
@@ -86,8 +90,8 @@ def send_registrations(request):
     return _done(message, 'success' if count else 'info')
 
 
-@registration_actions.action(
-    'sis', slug='send_grade_to_sis', label='Send Grade to SIS', scope=['detail'],
+@register(
+    registration_actions, 'action', 'sis', slug='send_grade_to_sis', label='Send Grade to SIS', scope=['detail'],
     icon='fas fa-paper-plane', btn_class='btn-info',
     confirm="Send this student's final grade to the SIS?",
     permission=can_push)

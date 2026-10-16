@@ -1,4 +1,5 @@
 """Class Grade Status report: status filter, roster counts, campus gate, CSV."""
+import unittest
 import csv
 import io
 import uuid
@@ -15,6 +16,11 @@ try:
     from django_login_history.models import post_login as _login_history_post_login
 except Exception:  # pragma: no cover
     _login_history_post_login = None
+
+from ..compat import has_campus_gate
+
+if not (has_campus_gate() and hasattr(get_user_model(), 'set_process_campuses')):
+    raise unittest.SkipTest('this cis has no per-user campus gating')
 
 from cis.models.term import AcademicYear, Term
 from cis.models.course import Campus, Cohort, Course

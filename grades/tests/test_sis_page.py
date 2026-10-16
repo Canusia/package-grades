@@ -7,7 +7,8 @@ from unittest.mock import patch
 from django.contrib.auth.signals import user_logged_in
 from django.test import TestCase
 from django.urls import reverse
-from django.utils import timezone
+from django.conf import settings
+from django.utils import dateformat, timezone
 
 try:
     from django_login_history.models import post_login as _login_history_post_login
@@ -285,14 +286,17 @@ class SISRegistrationFeedTests(_SISPageBase):
 
     def test_last_sent_at_is_local_time(self):
         reg = self.make_registration(self.make_section())
-        # 20:30 UTC on 15 Jan is 12:30 PM in America/Los_Angeles (PST, UTC-8).
+        # Shown in the tenant's TIME_ZONE (12:30 PM in America/Los_Angeles).
         sent_at = datetime(2040, 1, 15, 20, 30, tzinfo=dt_timezone.utc)
+        expected = dateformat.format(timezone.localtime(sent_at), 'm/d/Y g:i A')
         GradeSISSync.objects.create(registration=reg, status='sent', sent_grade='A',
                                     last_sent_at=sent_at, last_sent_by=self.ce_user)
 
         row = self.registrations_feed()[0]
 
-        self.assertEqual(row['last_sent_at'], '01/15/2040 12:30 PM')
+        self.assertEqual(row['last_sent_at'], expected)
+        if settings.TIME_ZONE == 'America/Los_Angeles':
+            self.assertEqual(expected, '01/15/2040 12:30 PM')
         self.assertEqual(row['sync_status'], 'Sent')
         self.assertEqual(row['sent_grade'], 'A')
 
