@@ -103,6 +103,7 @@ back when one is missing:
 | `cis.services.tenant_services.get_tenant_override` | SIS push is not configured (hidden) |
 | `Setting.install_defaults` | `install()` merges missing keys itself |
 | `myce.component_registry.{class_section_index,term,registration}` | That tab/action is not registered |
+| `highschool_admin` tab registry (hsadmin > v0.0.21) | No Grades tab on the HS admin class-section page |
 
 The host must still provide `myce.component_registry` itself (`ActionRegistry`)
 — mstc, wpunj and wvup don't, and can't run grades until they do.

@@ -130,7 +130,8 @@ class SettingsFormTest(_Fixture):
                 'is_active': 'Yes', 'debug_email_list': '',
                 'notify_instructor_on_submit': 'Yes', 'grades_submitted_cc': '',
                 'send_grade_reminders': 'Yes', 'student_grades_visible': 'Yes',
-                'student_transcript_enabled': 'Yes', **overrides}
+                'student_transcript_enabled': 'Yes', 'hs_admin_grade_entry': 'No',
+                **overrides}
         return class_section_grades(HttpRequest(), data)
 
     def test_cron_optional_when_reminders_off(self):
@@ -179,6 +180,7 @@ class SettingsFormTest(_Fixture):
         for k in ('is_active', 'notify_instructor_on_submit', 'send_grade_reminders',
                   'student_grades_visible', 'student_transcript_enabled'):
             self.assertEqual(value[k], 'Yes', k)
+        self.assertEqual(value['hs_admin_grade_entry'], 'No')  # #3: opt in
 
 
 class SettingsAPITest(_Fixture):

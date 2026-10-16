@@ -13,6 +13,7 @@ Two things are load-bearing here.
 See docs/superpowers/specs/2026-08-02-grades-grading-periods-design.md
 """
 import json
+import unittest
 from datetime import date, timedelta
 
 from django.conf import settings as django_settings
@@ -40,6 +41,7 @@ from cis.models.student import Student
 from cis.models.teacher import Teacher
 from cis.models.term import AcademicYear, Term
 
+from .. import tabs
 from ..models import GradingPeriod, PeriodGrade, SectionPeriodStatus
 
 User = get_user_model()
@@ -77,6 +79,7 @@ class HSAdminPeriodGradeEntryTests(TestCase):
                 'registration_status': ['applied'],
                 'start_date': '01/01/2020',
                 'end_date': '01/01/2040',
+                'hs_admin_grade_entry': 'Yes',
             }},
         )
 
@@ -317,3 +320,82 @@ class HSAdminPeriodGradeEntryTests(TestCase):
         self.assertFalse(PeriodGrade.objects.exists())
         registration.refresh_from_db()
         self.assertEqual(registration.grade, 'A')
+
+
+_needs_tab_registry = unittest.skipUnless(
+    tabs.hsadmin_class_section_tabs is not None,
+    'this highschool_admin has no class-section tab registry')
+
+
+class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
+    """#3: HS admin grade entry is behind a setting, default No.
+
+    Inherits the fixtures; the parent's tests are not re-run (see below).
+    """
+
+    def _set(self, value):
+        setting = Setting.objects.get(key=GRADES_KEY)
+        if value is None:
+            setting.value.pop('hs_admin_grade_entry', None)
+        else:
+            setting.value['hs_admin_grade_entry'] = value
+        setting.save()
+
+    def _page(self, section):
+        return self.client.get(reverse(
+            'highschool_admin:class_section', kwargs={'record_id': section.id}))
+
+    def test_default_is_off(self):
+        from ..services.gating import hs_admin_grade_entry_enabled
+        self._set(None)
+        self.assertFalse(hs_admin_grade_entry_enabled())
+
+    def test_off_get_is_not_found(self):
+        self._set('No')
+        section, _ = self._section()
+        self.assertEqual(self.client.get(self._url(section)).status_code, 404)
+
+    def test_off_post_does_not_write(self):
+        self._set('No')
+        section, registration = self._section()
+        response = self._post(section, registration, grade='C')
+        self.assertEqual(response.status_code, 404)
+        registration.refresh_from_db()
+        self.assertEqual(registration.grade, 'A')
+
+    def test_off_autosave_does_not_write(self):
+        self._set('No')
+        section, registration = self._section()
+        self.assertEqual(self._autosave(section, registration, 'C').status_code, 404)
+        registration.refresh_from_db()
+        self.assertEqual(registration.grade, 'A')
+
+    @_needs_tab_registry
+    def test_on_tab_links_to_grade_entry(self):
+        section, _ = self._section()
+        response = self._page(section)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('grades', response.context['detail_tabs'])
+        self.assertContains(response, self._url(section))
+
+    @_needs_tab_registry
+    def test_on_tab_links_each_period(self):
+        section, _ = self._section()
+        period = self._period()
+        response = self._page(section)
+        self.assertContains(response, self._url(section, period))
+
+    @_needs_tab_registry
+    def test_off_no_tab(self):
+        self._set('No')
+        section, _ = self._section()
+        response = self._page(section)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('grades', response.context['detail_tabs'])
+        self.assertNotContains(response, self._url(section))
+
+
+# Run only the setting tests on the subclass, not the inherited entry tests.
+for _name in [n for n in vars(HSAdminPeriodGradeEntryTests) if n.startswith('test_')]:
+    setattr(HSAdminGradeEntrySettingTests, _name, None)
+del _name

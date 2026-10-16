@@ -19,6 +19,10 @@ The check is copied verbatim from
 It runs before anything else in this view, so it gates the POST exactly as it
 gates the render -- a HS admin cannot enter grades for a section at a school
 they do not administer.
+
+Ahead of even that, the whole view 404s unless CE has switched on
+``hs_admin_grade_entry`` (default No), so the URL is not a way round the
+setting.
 """
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import Http404, HttpResponseNotFound
@@ -35,7 +39,7 @@ from cis.settings.highschool_admin_portal import (
 from ..forms.section import ClassSectionGradeFormSet, ClassSectionGradeForm
 from ..services.roster import students_for_grades
 from .grade_entry import autosave, is_autosave, roster_row
-from ..services.gating import can_enter_grades
+from ..services.gating import can_enter_grades, hs_admin_grade_entry_enabled
 from ..services.periods import (
     periods_for_section,
     resolve_period,
@@ -71,6 +75,9 @@ def _hs_admin_context(request):
 
 
 def class_section_grade(request, record_id):
+    if not hs_admin_grade_entry_enabled():
+        raise Http404('High school admin grade entry is not enabled.')
+
     menu_data, highschools = _hs_admin_context(request)
     menu = draw_menu(menu_data, 'classes', '', 'highschool_admin')
 

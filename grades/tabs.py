@@ -16,6 +16,11 @@ class_section_index_tabs = registry(
 registration_tabs = registry(
     'myce.component_registry.registration', 'registration_tabs')
 term_tabs = registry('myce.component_registry.term', 'term_tabs')
+# The HS admin portal's class-section tabs, nested (editable) or flat layout.
+hsadmin_class_section_tabs = (
+    registry('highschool_admin.highschool_admin.tabs.registry',
+             'hsadmin_class_section_tabs')
+    or registry('highschool_admin.tabs.registry', 'hsadmin_class_section_tabs'))
 
 
 @register(class_section_index_tabs, 'tab', slug='grades', title='Grades',
@@ -115,3 +120,27 @@ def grade_sis_tab(request, record):
     attempts = list(sync.attempts.select_related('attempted_by')) if sync else []
     return {'sync': sync, 'attempts': attempts, 'registration': record}
 
+
+def _hs_admin_may_enter_grades(user, record):
+    # The class-section view has already 404'd a section outside the admin's
+    # schools; this only applies CE's on/off switch (#3).
+    from .services.gating import hs_admin_grade_entry_enabled
+    return hs_admin_grade_entry_enabled()
+
+
+@register(hsadmin_class_section_tabs, 'tab', slug='grades', title='Grades',
+          order=25, template='grades/hs_admin/_class_section_grades_tab.html',
+          lazy=False, permission=_hs_admin_may_enter_grades)
+def hs_admin_grades_tab(request, record):
+    """Entry point to HS admin grade entry: one link per grading period.
+
+    `record` is the ClassSection. A term with no periods gets a single link,
+    matching the pre-periods behaviour of the grade-entry page.
+    """
+    from .services.periods import get_status, periods_for_section
+
+    periods = [
+        {'period': period, 'status': get_status(record, period)}
+        for period in periods_for_section(record)
+    ]
+    return {'periods': periods, 'status': get_status(record, None)}

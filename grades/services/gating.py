@@ -1,6 +1,6 @@
-"""Whether grades may be entered for a class section.
+"""Whether grades may be entered for a class section, and by whom.
 
-One function, three consumers -- the instructor section list badge, the
+``can_enter_grades`` has three consumers -- the instructor section list badge, the
 grade-entry page render, and the POST that actually writes grades -- so the
 condition cannot drift between what the UI shows and what the server enforces.
 """
@@ -44,3 +44,10 @@ def can_enter_grades(section):
         or DEFAULT_NOT_CONFIRMED_MESSAGE
     )
     return False, message
+
+
+def hs_admin_grade_entry_enabled():
+    """True when CE lets high school admins enter grades (default No, #3)."""
+    from ..settings.class_section_grades import class_section_grades
+
+    return class_section_grades.from_db().get('hs_admin_grade_entry') == 'Yes'

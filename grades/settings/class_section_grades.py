@@ -30,6 +30,7 @@ NEW_KEY_DEFAULTS = {
     'send_grade_reminders': 'Yes',
     'student_grades_visible': 'Yes',
     'student_transcript_enabled': 'Yes',
+    'hs_admin_grade_entry': 'No',
 }
 
 
@@ -212,6 +213,13 @@ class SettingForm(forms.Form):
         choices=YES_NO,
         label='Students Can Download the Unofficial Transcript',
         help_text='When No, the download button is hidden and the download link is disabled.',
+    )
+
+    hs_admin_grade_entry = forms.ChoiceField(
+        choices=YES_NO,
+        label='Let High School Admins Enter Grades',
+        help_text='When Yes, high school admins get a Grades tab on their class '
+                  'section page and can enter grades for sections at their schools.',
     )
 
     transcript_template_header = forms.CharField(
