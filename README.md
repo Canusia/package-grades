@@ -84,7 +84,7 @@ drops `notify_grades_pending` from the wheel.
 `webapp/requirements.txt`:
 
 ```
-git+https://github.com/Canusia/package-grades.git@v0.0.11
+git+https://github.com/Canusia/package-grades.git@v0.0.12
 ```
 
 `myce_cis` is **not** a required dependency, so the package installs on tenants
