@@ -8,7 +8,7 @@ from cis.models.term import Term
 from cis.models.section import ClassSection
 from ..forms.section import ClassSectionGradeFormSet, ClassSectionGradeForm
 from cis.utils import grades_page_header_for_instructor, is_submit_grades_open
-from cis.settings.instructor_portal import instructor_portal as portal_lang
+from ..compat import portal_text
 from ..services.roster import students_for_grades
 from .grade_entry import autosave, is_autosave, roster_row
 from ..services.gating import can_enter_grades
@@ -39,7 +39,7 @@ def class_grades(request):
         'grades/instructor/grades.html',
         {
             'menu': menu,
-            'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+            'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
             'page_header': grades_page_header_for_instructor(),
             'is_open': is_submit_grades_open(),
             'classes_api': classes_api,
@@ -189,6 +189,6 @@ def class_section_grade(request, record_id):
             'periods': periods,
             'period': period,
             'period_status': period_status,
-            'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+            'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
             'message': message
         })

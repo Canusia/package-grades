@@ -105,3 +105,29 @@ def install_defaults(setting_model, key, defaults):
         setting.value = stored
         setting.save()
     return setting
+
+
+# Portal page text ("blurbs") is moving out of cis into the portal packages
+# (package-cis#81, #82). Each role's sources, most preferred first: the
+# package's nested editable layout, its installed layout, then cis's copy.
+PORTAL_TEXT_SOURCES = {
+    'instructor': (
+        ('instructor.instructor.settings.instructor_portal', 'instructor_portal'),
+        ('instructor.settings.instructor_portal', 'instructor_portal'),
+        ('cis.settings.instructor_portal', 'instructor_portal'),
+    ),
+    'faculty': (
+        ('faculty.faculty.settings.faculty_portal_text', 'faculty_portal_text'),
+        ('faculty.settings.faculty_portal_text', 'faculty_portal_text'),
+        ('cis.settings.faculty_portal', 'faculty_portal'),
+    ),
+}
+
+
+def portal_text(role):
+    """The stored page text for the ``role`` portal, or {} when nothing owns it."""
+    for module, attr in PORTAL_TEXT_SOURCES[role]:
+        if has_module(module):
+            value = getattr(importlib.import_module(module), attr).from_db()
+            return value if isinstance(value, dict) else {}
+    return {}

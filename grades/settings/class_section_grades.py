@@ -362,7 +362,7 @@ class SettingForm(forms.Form):
 
         from cis.models.student import Student
         from cis.settings.student_regis_pending import student_regis_pending
-        from cis.settings.instructor_portal import instructor_portal as portal_lang
+        from ..compat import portal_text
         from cis.utils import (
             active_term, grades_page_header_for_instructor,
             is_submit_grades_open
@@ -375,13 +375,13 @@ class SettingForm(forms.Form):
                 'grades/instructor/grades.html',
                 {
                     'menu': '-1',
-                    'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'page_header': grades_page_header_for_instructor(),
                     'is_open': False,
                     'classes_api': '',
                     'terms': None,
                     'grades_intro': grade_settings.get('grades_closed') ,
-                    'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'active_term': None
                 })
         elif field_name in ['grades_open']:
@@ -391,13 +391,13 @@ class SettingForm(forms.Form):
                 'grades/instructor/grades.html',
                 {
                     'menu': '-1',
-                    'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'page_header': grades_page_header_for_instructor(),
                     'is_open': True,
                     'classes_api': '',
                     'terms': None,
                     'grades_intro': grade_settings.get('grades_open') ,
-                    'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'active_term': None
                 })
         elif field_name in ['grades_open_class_section']:
@@ -412,7 +412,7 @@ class SettingForm(forms.Form):
                     'grade_formset': None,
                     'students_in_class': None,
                     'is_open': True,
-                    'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'message': grade_settings.get('grades_open_class_section')
                 })
         elif field_name in ['grades_submitted_class_section']:
@@ -427,7 +427,7 @@ class SettingForm(forms.Form):
                     'grade_formset': None,
                     'students_in_class': None,
                     'is_open': True,
-                    'intro': portal_lang(request).from_db().get('grades_blurb', 'Change me'),
+                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'message': grade_settings.get('grades_submitted_class_section')
                 })
 
