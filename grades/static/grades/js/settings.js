@@ -61,14 +61,25 @@ function initGradeScaleTable() {
         {grade: 'F', points: 0.0}
     ];
 
-    // Parse existing value or use default
+    // Parse the saved value; the default is only for a scale never saved.
+    // If the saved value can't be read, say so and send '' -- the server then
+    // keeps the saved scale -- rather than showing (and saving) the default (#7).
     var gradeScale = defaultScale;
-    try {
-        var val = $hiddenField.val();
-        if (val) {
+    var val = $hiddenField.val();
+    if (val) {
+        try {
             gradeScale = JSON.parse(val);
+            if (!Array.isArray(gradeScale)) throw new Error('not a list');
+        } catch (e) {
+            $hiddenField.val('');
+            $hiddenField.data('table-initialized', true);
+            $hiddenField.closest('div').after($(
+                '<div class="alert alert-warning">The saved grade scale could not be ' +
+                'displayed, so it is hidden here. Saving this page will keep it unchanged.</div>'));
+            if (window.console) console.error('Grade scale: unreadable value', e);
+            return;
         }
-    } catch (e) {}
+    }
 
     // Create table container
     var $container = $('<div class="grade-scale-container mb-3"></div>');
@@ -81,8 +92,8 @@ function initGradeScaleTable() {
 
     function createRow(grade, points) {
         var $row = $('<tr></tr>');
-        var $gradeInput = $('<input type="text" class="form-control form-control-sm grade-input" value="' + (grade || '') + '" placeholder="e.g., A+">');
-        var $pointsInput = $('<input type="number" step="0.1" class="form-control form-control-sm points-input" value="' + (points !== undefined ? points : '') + '" placeholder="e.g., 4.0">');
+        var $gradeInput = $('<input type="text" class="form-control form-control-sm grade-input" placeholder="e.g., A+">').val(grade || '');
+        var $pointsInput = $('<input type="number" step="any" class="form-control form-control-sm points-input" placeholder="e.g., 4.0">').val(points !== undefined ? points : '');
         var $removeBtn = $('<button type="button" class="btn btn-sm btn-outline-danger"><i class="fa fa-times"></i></button>');
 
         $row.append($('<td></td>').append($gradeInput));

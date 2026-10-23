@@ -36,6 +36,19 @@ NEW_KEY_DEFAULTS = {
 }
 
 
+class GradeScaleField(forms.CharField):
+    """The grade scale travels as JSON in a hidden input (#7).
+
+    The saved value is a list, and a plain CharField renders it with str() --
+    Python repr with single quotes -- which the settings table can't parse.
+    """
+
+    def prepare_value(self, value):
+        if isinstance(value, (list, dict)):
+            return json.dumps(value)
+        return super().prepare_value(value)
+
+
 class SettingForm(forms.Form):
 
     class Media:
@@ -60,7 +73,7 @@ class SettingForm(forms.Form):
         help_text='Comma-separated addresses that receive grades emails in Debug mode.',
     )
 
-    grade_scale = forms.CharField(
+    grade_scale = GradeScaleField(
         required=False,
         widget=forms.HiddenInput(attrs={'id': 'id_grade_scale'}),
         label="Grade Scale"
@@ -322,6 +335,28 @@ class SettingForm(forms.Form):
 
         return reminder_dates_str
 
+    def clean_grade_scale(self):
+        """'' keeps the saved scale; anything else must be a valid scale (#7).
+
+        A value the table could not read must never be replaced by the default
+        scale and saved, which is how custom scales used to be lost.
+        """
+        value = (self.cleaned_data.get('grade_scale') or '').strip()
+        if not value:
+            return ''
+        try:
+            scale = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            raise ValidationError(_('The grade scale could not be read. Reload the page and try again.'))
+        if not isinstance(scale, list) or not scale:
+            raise ValidationError(_('The grade scale needs at least one grade.'))
+        for item in scale:
+            if (not isinstance(item, dict) or not str(item.get('grade', '')).strip()
+                    or not isinstance(item.get('points'), (int, float))
+                    or isinstance(item.get('points'), bool)):
+                raise ValidationError(_('Each grade needs a name and numeric GPA points.'))
+        return value
+
     def clean_grades_submitted_cc(self):
         return self._clean_addresses('grades_submitted_cc')
 
@@ -553,10 +588,16 @@ class SettingForm(forms.Form):
             {'grade': 'F', 'points': 0.0},
         ]
 
+    def _saved_grade_scale(self):
+        """The scale saved now, or the default when nothing is saved yet."""
+        from_db = getattr(type(self), 'from_db', None)
+        saved = from_db().get('grade_scale') if from_db else None
+        return saved if isinstance(saved, list) and saved else self.get_default_grade_scale()
+
     def _parse_grade_scale(self, value):
-        """Parse grade scale from JSON string or return default."""
+        """Parse grade scale from JSON; '' keeps the saved scale (#7)."""
         if not value:
-            return self.get_default_grade_scale()
+            return self._saved_grade_scale()
         try:
             parsed = json.loads(value)
             if isinstance(parsed, list):
