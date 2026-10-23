@@ -51,6 +51,11 @@ class SettingsPreviewTests(TestCase):
             self.assertEqual(response.status_code, 200, field_name)
             self.assertIn(marker, response.content.decode(), field_name)
 
+    def test_old_submitted_link_name_still_previews(self):
+        response = self._preview('grades_submitted')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('SUBMITTED-MARKER', response.content.decode())
+
     def test_every_preview_link_is_handled(self):
         links = self._links()
         self.assertIn('grades_submitted_class_section', links)

@@ -61,6 +61,20 @@ class GradeScaleSettingTests(TestCase):
             self.assertFalse(form.is_valid(), bad)
             self.assertIn('grade_scale', form.errors)
 
+    def test_legacy_text_points_round_trip(self):
+        # from_db's legacy gpa_points and hand-edited JSON can store "4.0".
+        legacy = [{'grade': 'A', 'points': '4.0'}, {'grade': 'F', 'points': 0}]
+        form = self._form(grade_scale=class_section_grades.base_fields['grade_scale']
+                          .prepare_value(legacy))
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form._to_python()['gpa_points'], {'A': 4.0, 'F': 0.0})
+
+    def test_non_finite_or_missing_points_rejected(self):
+        for bad in ('[{"grade": "A", "points": NaN}]', '[{"grade": "A", "points": Infinity}]',
+                    '[{"grade": "A", "points": null}]', '[{"grade": "A", "points": true}]'):
+            form = self._form(grade_scale=bad)
+            self.assertFalse(form.is_valid(), bad)
+
     def test_no_saved_row_falls_back_to_default(self):
         Setting.objects.filter(key=class_section_grades.key).delete()
         form = self._form(grade_scale='')

@@ -1,4 +1,4 @@
-import json, datetime
+import json, datetime, math
 from django import forms
 from django.conf import settings
 from django.http import JsonResponse
@@ -350,12 +350,23 @@ class SettingForm(forms.Form):
             raise ValidationError(_('The grade scale could not be read. Reload the page and try again.'))
         if not isinstance(scale, list) or not scale:
             raise ValidationError(_('The grade scale needs at least one grade.'))
+        normalised = []
         for item in scale:
-            if (not isinstance(item, dict) or not str(item.get('grade', '')).strip()
-                    or not isinstance(item.get('points'), (int, float))
-                    or isinstance(item.get('points'), bool)):
+            if not isinstance(item, dict) or not str(item.get('grade', '')).strip():
                 raise ValidationError(_('Each grade needs a name and numeric GPA points.'))
-        return value
+            points = item.get('points')
+            # Older rows (legacy gpa_points, hand-edited JSON) can carry points
+            # as text, e.g. "4.0"; accept anything that is a finite number.
+            try:
+                if isinstance(points, bool):
+                    raise ValueError
+                points = float(points)
+            except (TypeError, ValueError):
+                raise ValidationError(_('Each grade needs a name and numeric GPA points.'))
+            if not math.isfinite(points):
+                raise ValidationError(_('Each grade needs a name and numeric GPA points.'))
+            normalised.append({**item, 'grade': str(item['grade']).strip(), 'points': points})
+        return json.dumps(normalised)
 
     def clean_grades_submitted_cc(self):
         return self._clean_addresses('grades_submitted_cc')
@@ -594,13 +605,8 @@ class SettingForm(forms.Form):
         """Parse grade scale from JSON; '' keeps the saved scale (#7)."""
         if not value:
             return self._saved_grade_scale()
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return parsed
-            return self.get_default_grade_scale()
-        except (json.JSONDecodeError, TypeError):
-            return self.get_default_grade_scale()
+        # clean_grade_scale has already validated and normalised it.
+        return json.loads(value)
 
 class class_section_grades(SettingForm):
     key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_class_grades"
