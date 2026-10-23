@@ -1,0 +1,53 @@
+<!doctype html>
+{% comment %}
+Unofficial transcript page, rendered to PDF by grades.services.transcript.
+No full-height html/body styling: with it, the top margin pushed every
+transcript just past one page and wkhtmltopdf added a blank page (#6).
+A tenant can override this template at the same path.
+{% endcomment %}
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <title>Unofficial Transcript</title>
+    <style>
+        body {
+            font-size: 14px;
+        }
+        .table th, .table td {
+            padding: 0.5rem;
+        }
+    </style>
+</head>
+
+<body class="bg-white">
+    <div class="container-fluid mt-2">
+
+        {{header|safe}}
+
+        <div class="row">
+            <div class="col-12">
+                <table class="table table-striped">
+                    <thead>
+                        {{table_header|safe}}
+                    </thead>
+                    <tbody>
+                        {{rows|safe}}
+                        {% if not rows %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No courses found</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {{footer|safe}}
+
+    </div>
+</body>
+</html>

@@ -30,7 +30,8 @@ def render_transcript(student, request=None):
     from cis.models.section import StudentRegistration
     from ..settings.class_section_grades import class_section_grades
 
-    base_template = 'student/transcript.html'
+    # Shipped by grades (#6); was the host's student/transcript.html.
+    base_template = 'grades/student/transcript.html'
     template = get_template(base_template)
 
     template_settings = class_section_grades.from_db()
