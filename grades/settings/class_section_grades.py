@@ -185,7 +185,7 @@ class SettingForm(forms.Form):
     grades_submitted_class_section = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        help_text='Message displayed when grades have been submitted - this is in the class section page. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted\')" >See Preview</a>',
+        help_text='Message displayed when grades have been submitted - this is in the class section page. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted_class_section\')" >See Preview</a>',
         label="Grades Submitted Message"
     )
 
@@ -435,35 +435,31 @@ class SettingForm(forms.Form):
                     'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
                     'active_term': None
                 })
-        elif field_name in ['grades_open_class_section']:
+        elif field_name in ['grades_open_class_section', 'grades_submitted_class_section',
+                            'grades_submitted']:
+            # The class-section page with the configured message (#5). The
+            # submitted message's link used to send 'grades_submitted'; accept
+            # both. Context mirrors views.instructor.class_section_grade.
+            submitted = field_name != 'grades_open_class_section'
             grade_settings = self.from_db()
-            
             return render(
                 request,
-                'instructor/class_section_grade.html',
+                'grades/instructor/class_section_grade.html',
                 {
-                    'menu': None,
+                    'menu': '-1',
                     'class_section': None,
                     'grade_formset': None,
                     'students_in_class': None,
                     'is_open': True,
+                    'roster_gate_ok': True,
+                    'roster_gate_message': '',
+                    'periods': None,
+                    'period': None,
+                    'period_status': 'submitted' if submitted else '',
                     'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'message': grade_settings.get('grades_open_class_section')
-                })
-        elif field_name in ['grades_submitted_class_section']:
-            grade_settings = self.from_db()
-            
-            return render(
-                request,
-                'instructor/class_section_grade.html',
-                {
-                    'menu': None,
-                    'class_section': None,
-                    'grade_formset': None,
-                    'students_in_class': None,
-                    'is_open': True,
-                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'message': grade_settings.get('grades_submitted_class_section')
+                    'message': grade_settings.get(
+                        'grades_submitted_class_section' if submitted
+                        else 'grades_open_class_section'),
                 })
 
         email_settings = self.from_db()
