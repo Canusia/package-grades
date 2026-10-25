@@ -5,7 +5,7 @@ Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.buil
 <div class="card mb-3">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span>Grades</span>
-    <a class="btn btn-sm btn-primary" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;Download Roster</a>
+    <a class="btn btn-sm btn-primary" href="{{ grid.post_url }}?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;Download Roster</a>
   </div>
   <div class="card-body">
     {% if not grid.has_periods %}

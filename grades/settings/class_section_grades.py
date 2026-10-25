@@ -356,7 +356,7 @@ class SettingForm(forms.Form):
                             'grades_submitted']:
             # The class-section page with the configured message (#5). The
             # submitted message's link used to send 'grades_submitted'; accept
-            # both. Context mirrors views.instructor.class_section_grade.
+            # both. Context mirrors views.instructor.class_section_grade (the grid is a stub).
             submitted = field_name != 'grades_open_class_section'
             grade_settings = self.from_db()
             return render(
@@ -365,18 +365,21 @@ class SettingForm(forms.Form):
                 {
                     'menu': '-1',
                     'class_section': None,
-                    'grade_formset': None,
-                    'students_in_class': None,
-                    'is_open': True,
-                    'roster_gate_ok': True,
-                    'roster_gate_message': '',
-                    'periods': None,
-                    'period': None,
-                    'period_status': 'submitted' if submitted else '',
                     'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'message': grade_settings.get(
-                        'grades_submitted_class_section' if submitted
-                        else 'grades_open_class_section'),
+                    'grid': {
+                        'has_periods': True,
+                        'roster_gate_ok': True,
+                        'roster_gate_message': '',
+                        'periods': [],
+                        'columns': [],
+                        'rows': [],
+                        'editable_period': None,
+                        'post_url': '',
+                        'next_url': '',
+                        'message': grade_settings.get(
+                            'grades_submitted_class_section' if submitted
+                            else 'grades_open_class_section'),
+                    },
                 })
 
         email_settings = self.from_db()

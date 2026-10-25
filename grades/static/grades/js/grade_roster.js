@@ -77,6 +77,8 @@
         var sort = loadSort();
 
         tables.forEach(function (table) {
+            if (table.hasAttribute('data-grid-init')) { return; }
+            table.setAttribute('data-grid-init', '1');
             applySort(table, sort);
             table.querySelectorAll('[data-sort-key]').forEach(function (button) {
                 button.addEventListener('click', function () {
@@ -103,7 +105,8 @@
 
     function initAutosave() {
         var form = document.querySelector('form[data-autosave="1"]');
-        if (!form) { return; }
+        if (!form || form.hasAttribute('data-grid-init')) { return; }
+        form.setAttribute('data-grid-init', '1');
 
         var summary = form.querySelector('.autosave-summary');
         var inFlight = false;
@@ -143,7 +146,7 @@
             data.set('save_grade', DRAFT_VALUE);
             data.delete('submit_grade');
 
-            fetch(window.location.href, {
+            fetch(form.getAttribute('action') || window.location.href, {
                 method: 'POST',
                 body: data,
                 credentials: 'same-origin',
@@ -194,8 +197,17 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function init() {
         initSorting();
         initAutosave();
-    });
+    }
+
+    // Runs on first load and again whenever the script executes after the grid
+    // was injected (the Class Details tab loads lazily); both inits are
+    // idempotent via data-grid-init.
+    if (document.readyState !== 'loading') {
+        init();
+    } else {
+        document.addEventListener('DOMContentLoaded', init);
+    }
 })();

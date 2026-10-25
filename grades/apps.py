@@ -82,6 +82,7 @@ class GradesConfig(AppConfig):
         from . import signals  # noqa: F401
         from . import tabs  # noqa: F401
         from . import actions  # noqa: F401
+        from . import instructor_tabs  # noqa: F401
 
 
 class DevGradesConfig(AppConfig):
@@ -105,3 +106,4 @@ class DevGradesConfig(AppConfig):
         from . import signals  # noqa: F401
         from . import tabs  # noqa: F401
         from . import actions  # noqa: F401
+        from . import instructor_tabs  # noqa: F401

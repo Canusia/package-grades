@@ -1,219 +1,34 @@
 {% extends "cis/logged-base.html" %}
-{%block title %}Instructor Class Details{% endblock %}
-
+{% block title %}Class Grades{% endblock %}
 {% load static %}
-{% load templatehelpers %}
-{% load crispy_forms_tags %}
 {% block body %}
 <main>
-    {{intro|safe}}
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'instructor:dashboard' %}">Home</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'instructor:grades' %}">All Classes</a></li>
-            <li class="breadcrumb-item active" aria-current="page">{{class_section}}</li>
-        </ol>
-    </nav>
-    <div class="row">
-        <div class="col-12">
-            {% if messages %}
-            <ul class="messages list-group mb-4">
-                {% for message in messages %}
-                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
-                    {{ message }}</li>
-                    {% endfor %}
-            </ul>
-            {% endif %}
-            <style>
-                div.cell div.info {
-                    font-size: 1.1em;
-                }
-
-                div.cell div.label {
-                    text-transform: uppercase;
-                    font-size: 0.7em;
-                    font-weight: 100;
-                }
-            </style>
-            <div class="row">
-                <div class="col-md-5">
-                    <div class="card">
-                        <div class="card-header"><h3>Class Details</h3></div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-6">
-                                    <div class="cell mb-3">
-                                        <div class="info">{{class_section.term}}</div>
-                                        <div class="label">Term</div>
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="cell mb-3">
-                                        <div class="info">{{class_section.course}}</div>
-                                        <div class="label">Course</div>
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="cell mb-3">
-                                        <div class="info">{{class_section.class_number}}</div>
-                                        <div class="label">Class #</div>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <div class="cell mb-3">
-                                        <div class="info">{{class_section.highschool}}</div>
-                                        <div class="label">High School</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-7">
-
-                    {% comment %}
-                    Grading period selector. Absent entirely when the term
-                    defines no periods, which is the pre-periods behaviour.
-                    {% endcomment %}
-                    {% if periods %}
-                    <ul class="nav nav-tabs mb-0">
-                        {% for p in periods %}
-                        <li class="nav-item">
-                            <a class="nav-link{% if p.id == period.id %} active{% endif %}"
-                               href="?period={{ p.id }}">
-                                {{ p.name }}
-                                {% if p.is_final %}<span class="badge badge-secondary">Final</span>{% endif %}
-                            </a>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% if period %}
-                    <div class="alert alert-light border mb-3" role="status">
-                        <strong>{{ period.name }}</strong> &mdash;
-                        open {{ period.opens_on|date:"m/d/Y" }}
-                        to {{ period.due_on|date:"m/d/Y" }}.
-                        {% if not is_open %}
-                        <span class="text-danger">This period is not currently open for grade entry.</span>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-                    {% endif %}
-
-                    <div class="tab-content">
-
-                        {% if not is_open or not roster_gate_ok %}
-                        <div class="" id="class_grades">
-                            <div class="card">
-                                <div class="card-header"><h3>Class Roster <a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3></div>
-
-                                <div class="card-body">
-                                    {% if not roster_gate_ok %}
-                                    <div class="alert alert-warning" role="alert">
-                                        {{ roster_gate_message|safe }}
-                                    </div>
-                                    {% endif %}
-                                    <div class="table-responsive">
-                                        <table class="table table-striped js-sortable-roster">
-                                            <thead>
-                                                <tr>
-                                                    <th aria-sort="ascending"><button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="last_name">Last Name <i class="fas fa-sort-up" aria-hidden="true"></i></button></th>
-                                                    <th aria-sort="none"><button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="first_name">First Name <i class="fas fa-sort" aria-hidden="true"></i></button></th>
-                                                    <th aria-sort="none"><button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="psid">Student ID <i class="fas fa-sort" aria-hidden="true"></i></button></th>
-                                                    <th>Grade</th>
-                                                    <th>Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for student in students_in_class %}
-                                                <tr data-last-name="{{student.student.user.last_name}}"
-                                                    data-first-name="{{student.student.user.first_name}}"
-                                                    data-psid="{{student.student.user.psid|default:''}}">
-                                                    <td>{{student.student.user.last_name}}</td>
-                                                    <td>{{student.student.user.first_name}}</td>
-                                                    <td class="psid">{{student.student.user.psid|default:''}}</td>
-                                                    <td>{{student.grade}}</td>
-                                                    <td>{{student.status|capfirst}}</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        {%else%}
-                        <div class="" id="class_roster">
-                            <div class="card">
-                                <div class="card-header"><h3>Grade Roster<a class="btn btn-sm btn-primary float-right" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;&nbsp;Download Roster</a></h3> </div>
-                                <div class="card-body">
-                                    {{message|safe}}
-                                    <form action="" method="post"{% if period_status != 'submitted' %} data-autosave="1"{% endif %}>
-                                        {{ grade_formset.management_form }}
-                                        {% csrf_token %}
-                                        <div class="table-responsive">
-                                            <table class="table table-striped js-sortable-roster">
-                                                <thead>
-                                                    <tr>
-                                                        <th aria-sort="ascending"><button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="last_name">Last Name <i class="fas fa-sort-up" aria-hidden="true"></i></button></th>
-                                                        <th aria-sort="none"><button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="first_name">First Name <i class="fas fa-sort" aria-hidden="true"></i></button></th>
-                                                        <th aria-sort="none"><button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="psid">Student ID <i class="fas fa-sort" aria-hidden="true"></i></button></th>
-                                                        <th>Grade</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {% for form in grade_formset %}
-                                                    <tr data-last-name="{{form.initial.last_name}}"
-                                                        data-first-name="{{form.initial.first_name}}"
-                                                        data-psid="{{form.initial.psid}}">
-                                                        <td>
-                                                            {{form.initial.last_name}}
-                                                            {{form.student_id}}
-                                                            {{form.student}}
-                                                        </td>
-                                                        <td>{{form.initial.first_name}}</td>
-                                                        <td class="psid">{{form.initial.psid}}</td>
-                                                        <td>
-                                                            {{form.grade|as_crispy_field}}
-                                                            <small class="autosave-status text-muted" aria-live="polite"></small>
-                                                        </td>
-                                                    </tr>
-                                                    {% endfor %}
-                                                </tbody>
-
-                                                {% if period_status != 'submitted' %}
-                                                <tfoot>
-                                                    <tr>
-                                                        <td colspan=4 class="text-right">
-                                                            <small class="autosave-summary text-muted mr-2" aria-live="polite">Grades save automatically as a draft.</small>
-                                                            <input type="hidden" name="action" value="save_grade">
-                                                            <input type="submit" name='save_grade' class="btn btn-secondary btn-sm"
-                                                                value="Save Grades as 'Draft'">
-                                                                &nbsp;
-                                                            <input type="submit" name='submit_grade' class="btn btn-primary btn-sm"
-                                                                value="Submit Final Grades">
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                                {% else %}
-                                                    <script>
-                                                        jQuery(document).ready(function($) {
-                                                            $('select').prop('disabled', 'disabled');
-                                                        });
-                                                    </script>
-                                                {% endif %}
-                                            </table>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div> <!-- end #class_roster -->
-                        {%endif%}
-                    </div>
-                </div>
-                <div class="clearfix">&nbsp;</div>
-            </div>
-        </div>
+  {{ intro|default_if_none:''|safe }}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'instructor:dashboard' %}">Home</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'instructor:grades' %}">Grades</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ class_section }}</li>
+    </ol>
+  </nav>
+  {% include 'cis/messages.html' %}
+  {% if page_messages %}<div class="row">{% include 'cis/page_messages.html' %}</div>{% endif %}
+  <style>div.cell div.info{font-size:1.1em}div.cell div.label{text-transform:uppercase;font-size:.7em;font-weight:100}</style>
+  <div class="row">
+    <div class="col-md-4">
+      <div class="card mb-3">
+        <div class="card-header">Details</div>
+        <div class="card-body"><div class="row">
+          <div class="col-6"><div class="cell mb-3"><div class="info">{{ class_section.term }}</div><div class="label">Term</div></div></div>
+          <div class="col-6"><div class="cell mb-3"><div class="info">{{ class_section.course }}</div><div class="label">Course</div></div></div>
+          <div class="col-6"><div class="cell mb-3"><div class="info">{{ class_section }}</div><div class="label">Class #</div></div></div>
+          <div class="col-12"><div class="cell mb-3"><div class="info">{{ class_section.highschool|default:'' }}</div><div class="label">High School</div></div></div>
+          {% if class_section %}<div class="col-12"><a href="{% url 'instructor:class_section' class_section.id %}">Open class details</a></div>{% endif %}
+        </div></div>
+      </div>
+    </div>
+    <div class="col-md-8">{% include 'grades/partials/_grade_grid.html' %}</div>
+  </div>
 </main>
 <script src="{% static 'grades/js/grade_roster.js' %}"></script>
 {% endblock %}

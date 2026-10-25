@@ -123,9 +123,9 @@ class PeriodGradeEntryTests(TestCase):
     def _post(self, section, registration, grade='B', period=None):
         url = reverse('instructor:class_section_grade',
                       kwargs={'record_id': section.id})
-        if period is not None:
-            url += f'?period={period.id}'
+        extra = {'period': str(period.id)} if period is not None else {}
         return self.client.post(url, data={
+            **extra,
             'form-TOTAL_FORMS': '1',
             'form-INITIAL_FORMS': '1',
             'form-MIN_NUM_FORMS': '0',
@@ -214,7 +214,7 @@ class PeriodGradeEntryTests(TestCase):
 
         resp = self._post(section, registration, grade='C', period=foreign)
 
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 302)  # v1: refused with a message
         self.assertFalse(PeriodGrade.objects.filter(period=foreign).exists())
 
     def test_marks_are_kept_separate_per_period(self):

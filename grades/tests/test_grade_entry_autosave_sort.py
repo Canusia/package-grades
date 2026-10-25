@@ -183,7 +183,7 @@ class GradeEntryAutosaveSortTests(TestCase):
         response = self.client.post(
             self.url, self._draft_post([(first, 'B'), (second, '')]), **XHR)
 
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 403)
         first.refresh_from_db()
         self.section.refresh_from_db()
         self.assertEqual(first.grade, '')
@@ -198,11 +198,11 @@ class GradeEntryAutosaveSortTests(TestCase):
 
     def test_rows_carry_sort_keys_and_student_id(self):
         response = self.client.get(self.url)
-        self.assertContains(response, 'data-last-name="Adams"')
-        self.assertContains(response, 'data-first-name="Zoe"')
-        self.assertContains(response, 'data-psid="300"')
+        self.assertContains(response, 'data-sort-lastname="Adams"')
+        self.assertContains(response, 'data-sort-firstname="Zoe"')
+        self.assertContains(response, 'data-sort-psid="300"')
         self.assertContains(response, 'data-sort-key="psid"')
-        self.assertContains(response, '<td class="psid">100</td>', html=False)
+        self.assertContains(response, '<td>100</td>', html=False)
 
 
 class ClassGradesListStatusTests(SimpleTestCase):
