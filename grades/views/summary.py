@@ -1,10 +1,12 @@
 """CE grade submission summary page (spec §5)."""
 import csv
 import datetime
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.text import slugify
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
@@ -30,24 +32,36 @@ def _period(request, term_ids):
     return periods, period
 
 
+def _clean_highschools(values):
+    """Keep only ids the current user's school picker offers (strings)."""
+    allowed = {str(i) for i in picker_queryset().values_list('pk', flat=True)}
+    return [h for h in values if h in allowed]
+
+
+def _safe_cell(value):
+    value = '' if value is None else str(value)
+    return "'" + value if value[:1] in ('=', '+', '-', '@', '\t', '\r') else value
+
+
 def summary(request):
     available = grade_terms()
     selected = selected_term_ids(request, available)
     periods, period = _period(request, selected)
-    hs_ids = [h for h in request.GET.getlist('highschool') if h]
+    hs_ids = _clean_highschools(request.GET.getlist('highschool'))
     data = summarize(period, highschool_ids=hs_ids) if period else None
 
     if period and request.GET.get('format') == 'csv':
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="grade_summary_{period.name}.csv"'
+        response['Content-Disposition'] = f'attachment; filename="grade_summary_{slugify(period.name) or 'period'}.csv"'
         w = csv.writer(response)
         w.writerow(['Instructor', 'Email', 'High School(s)', 'Classes', 'Submitted', 'Draft',
                     'Not Started', 'Status', 'Last Reminder'])
         for r in data['rows']:
             u = r['teacher_user']
-            w.writerow([f'{u.last_name}, {u.first_name}', u.email, '; '.join(r['highschools']),
-                        r['classes'], r['submitted'], r['saved'], r['not_started'], r['status'],
-                        r['last_notified_on'].strftime('%m/%d/%Y') if r['last_notified_on'] else ''])
+            w.writerow([_safe_cell(c) for c in (
+                f'{u.last_name}, {u.first_name}', u.email, '; '.join(r['highschools']),
+                r['classes'], r['submitted'], r['saved'], r['not_started'], r['status'],
+                r['last_notified_on'].strftime('%m/%d/%Y') if r['last_notified_on'] else '')])
         return response
 
     return render(request, 'grades/ce/summary.html', {
@@ -66,8 +80,11 @@ def summary_remind(request):
     if period is None:
         raise Http404('No such grading period.')
     ids = [int(i) for i in request.POST.getlist('teacher') if i.isdigit()]
+    hs_ids = _clean_highschools(request.POST.getlist('highschool'))
     if request.POST.get('all') == '1':
-        ids = [r['teacher_user'].id for r in summarize(period)['rows'] if r['status'] != 'submitted']
+        ids = [r['teacher_user'].id for r in summarize(period, highschool_ids=hs_ids)['rows'] if r['status'] != 'submitted']
     sent = remind(period, ids)
     messages.add_message(request, messages.SUCCESS, f'Sent {sent} reminder(s).', 'list-group-item-success')
-    return redirect(reverse('grades_ce:summary') + f'?period={period.id}&term={period.term_id}')
+    query = urlencode([('period', period.id), ('term', period.term_id)]
+                      + [('highschool', h) for h in hs_ids])
+    return redirect(reverse('grades_ce:summary') + '?' + query)

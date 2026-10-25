@@ -59,6 +59,7 @@
   <form method="post" action="{% url 'grades_ce:summary_remind' %}">
     {% csrf_token %}
     <input type="hidden" name="period" value="{{ period.id }}">
+    {% for h in selected_highschools %}<input type="hidden" name="highschool" value="{{ h }}">{% endfor %}
     <div class="mb-2">
       <button type="submit" class="btn btn-outline-primary">Send reminder to selected</button>
       <button type="submit" name="all" value="1" class="btn btn-outline-secondary">Remind all not submitted</button>

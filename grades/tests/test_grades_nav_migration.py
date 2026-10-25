@@ -77,8 +77,8 @@ class GradesV1NavMigrationTests(SimpleTestCase):
         value = self._value([{'name': 'grades', 'url': 'old'}, {'name': 'students'}])
         self.assertEqual(self.m.patch_instructor_menu(value), value)
 
-    def test_reverse_removes_by_name(self):
+    def test_reverse_keeps_instructor_item_removes_ce_item(self):
         out = self.m.patch_instructor_menu(self.m.patch_ce_menu(self._value([{'name': 'students'}])))
         back = self.m.patch_instructor_menu(self.m.patch_ce_menu(out, remove=True), remove=True)
-        self.assertEqual([i['name'] for i in json.loads(back['instructor_menu'])], ['students'])
+        self.assertEqual([i['name'] for i in json.loads(back['instructor_menu'])], ['students', 'grades'])
         self.assertNotIn('grades_summary', back['ce_menu'])

@@ -6,7 +6,7 @@ Data migration: v1 menu items.
   no item named ``grades`` yet.
 
 Both live in the cis.settings.menu Setting (one row per campus on a
-multi-campus deployment). Idempotent; backwards removes the items by name.
+multi-campus deployment). Idempotent; backwards removes only the CE item (the instructor item may pre-exist).
 """
 import json
 
@@ -67,8 +67,8 @@ def patch_instructor_menu(value, *, remove=False):
         return value
     names = [i.get('name') for i in items if isinstance(i, dict)]
     if remove:
-        items = [i for i in items if not (isinstance(i, dict) and i.get('name') == INSTRUCTOR_ENTRY['name'])]
-    elif INSTRUCTOR_ENTRY['name'] in names:
+        return value  # the item may pre-exist this migration: never remove it
+    if INSTRUCTOR_ENTRY['name'] in names:
         return value
     else:
         at = names.index(INSTRUCTOR_AFTER) + 1 if INSTRUCTOR_AFTER in names else len(items)

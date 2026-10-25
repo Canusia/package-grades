@@ -103,6 +103,29 @@ class SummaryViewTests(GradesTestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Message.objects.count(), 1)
 
+    def test_bad_highschool_param_is_ignored(self):
+        base = reverse('grades_ce:summary')
+        self.assertEqual(self.client.get(base + '?highschool=abc').status_code, 200)
+        self.assertEqual(self.client.get(base + '?highschool=abc&format=csv').status_code, 200)
+
+    def test_csv_neutralizes_formulas(self):
+        u = self.t1.user
+        u.last_name = '=HYPERLINK("x")'
+        u.save()
+        resp = self.client.get(reverse('grades_ce:summary') + f'?period={self.mid.id}&format=csv')
+        self.assertIn('"\'=HYPERLINK(""x"")', resp.content.decode())
+
+    def test_remind_all_respects_highschool_filter(self):
+        hs1, hs2 = f.highschool(), f.highschool()
+        t2 = f.teacher()
+        f.section(self.term, t2, highschool_obj=hs2)
+        self.a1.highschool = hs1
+        self.a1.save()
+        resp = self.client.post(reverse('grades_ce:summary_remind'),
+                                {'period': str(self.mid.id), 'all': '1', 'highschool': [str(hs1.id)]})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(Message.objects.count(), 1)
+
     def test_remind_unknown_period_404s(self):
         import uuid
         resp = self.client.post(reverse('grades_ce:summary_remind'), {'period': str(uuid.uuid4())})
