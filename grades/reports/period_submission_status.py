@@ -17,6 +17,7 @@ from cis.models.section import ClassSection
 from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
 from ..models import GradingPeriod, SectionPeriodStatus
 from ..services.csv_safe import safe_cell
+from ..services.report_marks import periods_outside_terms_error
 from .class_grade_status import STATUS_LABELS, last_changed, status_key
 
 COLUMNS = ['Term', 'Course', 'Grading Period', 'Final', 'Class No.', 'Section No.',
@@ -60,6 +61,11 @@ class period_submission_status(forms.Form):
             self.helper.form_action = reverse_lazy(
                 'report:run_report', args=[request.GET.get('report_id')]
             )
+
+    def clean(self):
+        cleaned = super().clean()
+        periods_outside_terms_error(self, 'periods')
+        return cleaned
 
     def get_result(self, data, user=None):
         """[(section, period, SectionPeriodStatus or None)] for active sections x periods."""

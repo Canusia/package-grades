@@ -12,6 +12,22 @@ def period_mark_annotation(period):
         period=period, registration=OuterRef('pk')).values('grade')[:1]), Value(''))
 
 
+def periods_outside_terms_error(form, field):
+    """Add a ``field`` error to a report form when any chosen grading period
+    belongs to a term that is not among the chosen ``term``s. Call from clean()."""
+    chosen = form.cleaned_data.get(field)
+    terms = form.cleaned_data.get('term')
+    if not chosen or not terms:
+        return
+    periods = list(chosen) if hasattr(chosen, '__iter__') else [chosen]
+    term_ids = {t.pk for t in terms}
+    outside = [p for p in periods if p.term_id not in term_ids]
+    if outside:
+        names = ', '.join(f'{p.name} ({p.term})' for p in outside)
+        form.add_error(field, f'Choose grading periods of the selected term(s) only; '
+                              f'not in them: {names}.')
+
+
 def selected_period(data):
     """The GradingPeriod chosen in a report's ``grading_period`` field, or None."""
     from ..models import GradingPeriod

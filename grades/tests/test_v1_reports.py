@@ -190,3 +190,52 @@ class NewReportsCampusScopeTests(GradesTestCase):
             'term': [self.term.id],
             'campus': [self.campus_a.id, self.campus_b.id]}, user=self.ce)
         self.assertEqual({s.id for s, _, _ in result}, {self.regs['a'][0].id})
+
+
+class PeriodTermCheckTests(GradesTestCase):
+    """Report forms reject grading periods outside the selected terms (I4)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        f.grades_setting()
+        cls.t1, cls.t2 = f.term(), f.term()
+        cls.p1 = f.period(cls.t1, 'Mid T1', date(2026, 10, 1), date(2026, 10, 9), 1)
+        cls.p2 = f.period(cls.t2, 'Mid T2', date(2026, 10, 1), date(2026, 10, 9), 1)
+
+    def _errors(self, report_cls, field, period, terms):
+        value = [str(period.id)] if field == 'periods' else str(period.id)
+        form = report_cls(data={'term': [str(t.id) for t in terms], field: value})
+        form.is_valid()
+        return form.errors.get(field)
+
+    def test_period_reports_reject_other_term_periods(self):
+        for report_cls in (period_grades, period_submission_status):
+            with self.subTest(report=report_cls.__name__):
+                self.assertIn('selected term', self._errors(report_cls, 'periods', self.p2, [self.t1])[0])
+                self.assertIsNone(self._errors(report_cls, 'periods', self.p1, [self.t1]))
+
+    def test_distribution_reports_reject_other_term_period(self):
+        for report_cls in (grade_by_course, grade_by_highschool, grade_by_demographics):
+            with self.subTest(report=report_cls.__name__):
+                self.assertIn('selected term', self._errors(report_cls, 'grading_period', self.p2, [self.t1])[0])
+                self.assertIsNone(self._errors(report_cls, 'grading_period', self.p1, [self.t1, self.t2]))
+
+    def test_status_filter_only_requires_own_term_periods(self):
+        s1 = f.section(self.t1, f.teacher())
+        s2 = f.section(self.t2, f.teacher())
+        f.registration(s1, last_name='One')
+        f.registration(s2, last_name='Two')
+        set_status(s1, self.p1, 'submitted')
+        set_status(s2, self.p2, 'submitted')
+        _, rows = period_grades().table({
+            'term': [self.t1.id, self.t2.id], 'periods': [self.p1.id, self.p2.id],
+            'campus': [], 'period_status': ['submitted']})
+        self.assertEqual(sorted(r[7] for r in rows), ['One', 'Two'])
+
+    def test_period_grades_header_is_csv_safe(self):
+        self.p1.name = '=cmd()'
+        self.p1.save()
+        task = SimpleNamespace(id=5, created_by=None)
+        rows = run_report(m_pg, period_grades(), task, {
+            'term': [self.t1.id], 'periods': [self.p1.id], 'campus': []})
+        self.assertEqual(rows[0][-1], "'=cmd()")

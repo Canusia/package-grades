@@ -18,7 +18,9 @@ from cis.models.student import Student
 from cis.models.section import StudentRegistration
 from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
 from ..models import GradingPeriod
-from ..services.report_marks import period_mark_annotation, selected_period
+from ..services.report_marks import (
+    period_mark_annotation, periods_outside_terms_error, selected_period,
+)
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -173,6 +175,11 @@ class grade_by_demographics(forms.Form):
             return ', '.join(ethnicities) if ethnicities else labels.get(str(value), str(value))
 
         return labels.get(str(value), str(value) if value else 'Not Specified')
+
+    def clean(self):
+        cleaned = super().clean()
+        periods_outside_terms_error(self, 'grading_period')
+        return cleaned
 
     def get_result(self, data, user=None):
         """Return the scoped, pre-aggregation StudentRegistration queryset."""

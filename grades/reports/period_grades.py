@@ -17,7 +17,7 @@ from cis.models.section import StudentRegistration
 from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
 from ..models import GradingPeriod, SectionPeriodStatus
 from ..services.csv_safe import safe_cell
-from ..services.report_marks import period_mark_annotation
+from ..services.report_marks import period_mark_annotation, periods_outside_terms_error
 from .class_grade_status import GRADE_STATUS_CHOICES, NOT_STARTED, status_key
 
 
@@ -72,15 +72,26 @@ class period_grades(forms.Form):
         return '' if value in (None, '-') else value
 
     def _keep_by_period_status(self, regs, periods, wanted):
-        """Registrations whose section has a wanted status for every selected period."""
-        section_ids = set(regs.values_list('class_section_id', flat=True))
+        """Registrations whose section has a wanted status for every selected
+        period of the section's own term (other terms' periods do not apply)."""
+        section_terms = dict(regs.values_list('class_section_id', 'class_section__term_id'))
         found = {}
         for s in SectionPeriodStatus.objects.filter(
-                period__in=periods, class_section_id__in=section_ids):
+                period__in=periods, class_section_id__in=section_terms):
             found[(s.class_section_id, s.period_id)] = status_key(s.status)
-        ok = [sid for sid in section_ids
-              if all(found.get((sid, p.pk), NOT_STARTED) in wanted for p in periods)]
+        # A section whose term has none of the selected periods has no status
+        # to match, so it is left out rather than passing vacuously.
+        ok = []
+        for sid, term_id in section_terms.items():
+            own = [p for p in periods if p.term_id == term_id]
+            if own and all(found.get((sid, p.pk), NOT_STARTED) in wanted for p in own):
+                ok.append(sid)
         return regs.filter(class_section_id__in=ok)
+
+    def clean(self):
+        cleaned = super().clean()
+        periods_outside_terms_error(self, 'periods')
+        return cleaned
 
     def table(self, data, user=None):
         periods = list(GradingPeriod.objects.filter(pk__in=data.get('periods') or [])
@@ -118,7 +129,7 @@ class period_grades(forms.Form):
 
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=',')
-        writer.writerow(header)
+        writer.writerow([safe_cell(c) for c in header])
         for row in rows:
             writer.writerow([safe_cell(c) for c in row])
 

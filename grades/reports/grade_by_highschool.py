@@ -16,7 +16,9 @@ from cis.models.highschool import HighSchool
 from cis.models.section import StudentRegistration
 from ..compat import picker_queryset
 from ..models import GradingPeriod
-from ..services.report_marks import period_mark_annotation, selected_period
+from ..services.report_marks import (
+    period_mark_annotation, periods_outside_terms_error, selected_period,
+)
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -70,6 +72,11 @@ class grade_by_highschool(forms.Form):
             self.helper.form_action = reverse_lazy(
                 'report:run_report', args=[request.GET.get('report_id')]
             )
+
+    def clean(self):
+        cleaned = super().clean()
+        periods_outside_terms_error(self, 'grading_period')
+        return cleaned
 
     def run(self, task, data):
         term_ids = data.get('term')
