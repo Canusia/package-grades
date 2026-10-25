@@ -37,8 +37,12 @@ def _grade(registration):
     from .window import submitted_grade
     from ..models import PeriodGrade
     section = registration.class_section
+    periods = periods_for_section(section)
+    if not periods:
+        # A term graded before v1 has no periods: show its submitted final grade.
+        return submitted_grade(registration)
     lines = []
-    for period in periods_for_section(section):
+    for period in periods:
         if period.is_final:
             grade = submitted_grade(registration)
             if grade not in ('', '-'):

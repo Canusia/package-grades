@@ -83,11 +83,19 @@ def grade_scale():
 
 
 def submitted_grade(registration):
-    """The final grade a student may see: only once the final period is submitted."""
-    from .periods import get_status
-    from ..models import GradingPeriod
-    final = GradingPeriod.objects.filter(
-        term_id=registration.class_section.term_id, is_final=True).first()
-    if final is None or get_status(registration.class_section, final) != 'submitted':
+    """The final grade a student may see: only once final grades are submitted.
+
+    The final period's ``SectionPeriodStatus`` decides when it exists.
+    Without one -- a term with no periods, or a section submitted before v1
+    (0.0.x) -- ``ClassSection.grade_status`` decides; ``set_status`` mirrors
+    the final period onto that column, so the two never disagree for v1 data.
+    """
+    from ..models import GradingPeriod, SectionPeriodStatus
+    section = registration.class_section
+    final = GradingPeriod.objects.filter(term_id=section.term_id, is_final=True).first()
+    row = (SectionPeriodStatus.objects.filter(period=final, class_section=section).first()
+           if final is not None else None)
+    status = row.status if row is not None else section.grade_status
+    if status != 'submitted':
         return '-'
     return registration.grade
