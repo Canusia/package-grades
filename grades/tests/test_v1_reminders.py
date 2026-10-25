@@ -71,3 +71,11 @@ class ReminderV1Tests(GradesTestCase):
         from django.core.management import call_command
         call_command('notify_grades_pending', time='2033-10-15 08:00:00')
         self.assertEqual(Message.objects.count(), 0)
+
+    def test_inactive_sections_not_reminded(self):
+        p = self._period(before=2, due=2)
+        self.section.status = 'C'
+        self.section.save()
+        notify_sections_pending_period_grade(today=TODAY)
+        self.assertEqual(Message.objects.count(), 0)
+        self.assertFalse(SectionPeriodStatus.objects.filter(period=p).exists())

@@ -92,8 +92,8 @@ def needs_reminder(status_row, period, today=None):
 def sections_pending_for_period(period, today=None):
     """``[(section, status_row)]`` for sections that should be reminded now.
 
-    Only sections on the period's own term, and only those whose teacher has
-    an email address to send to.
+    Only active sections (status 'A', as the CE summary counts them) on the
+    period's own term, and only those whose teacher has an email address.
     """
     from cis.models.section import ClassSection
 
@@ -101,6 +101,7 @@ def sections_pending_for_period(period, today=None):
 
     candidates = ClassSection.objects.filter(
         term_id=period.term_id,
+        status='A',
         teacher__isnull=False,
     ).exclude(
         teacher__user__email=''
