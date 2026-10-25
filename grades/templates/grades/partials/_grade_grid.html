@@ -1,11 +1,12 @@
 {% comment %}
-Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.build_grid).
+Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.build_grid); optional grades_download_url
+(a "Download Grades" CSV button beside Download Roster).
 {% endcomment %}
 {% load crispy_forms_tags %}
-<div class="card mb-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span>Grades</span>
+<div class="card mb-3 border-top-0">
+  <div class="card-header d-flex justify-content-end align-items-center">
     <a class="btn btn-sm btn-primary" href="{{ grid.post_url }}?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;Download Roster</a>
+    {% if grades_download_url and grid.has_periods %}<a class="btn btn-sm btn-primary ml-2" href="{{ grades_download_url }}"><i class="fa fa-file-csv"></i>&nbsp;Download Grades</a>{% endif %}
   </div>
   <div class="card-body">
     {% if not grid.has_periods %}

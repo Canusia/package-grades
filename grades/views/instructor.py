@@ -1,4 +1,5 @@
 from django.shortcuts import render, get_object_or_404
+from django.template.loader import render_to_string
 from django.urls import reverse
 
 from cis.menu import draw_menu, INSTRUCTOR_MENU
@@ -6,10 +7,12 @@ from cis.models.term import Term
 from cis.models.section import ClassSection
 from cis.page_messages import get_page_messages
 from ..compat import portal_text
+from ..instructor_tabs import grade_page_tabs
 from ..services.window import (
     chosen_term_id, grade_terms as grade_terms_service, selected_term_ids,
 )
 from ..services.class_list import class_rows
+from ..services.grade_csv import grades_csv_response
 from ..services.grade_grid import build_grid
 from ..settings.class_section_grades import class_section_grades
 from .grade_entry import handle_grade_post
@@ -45,13 +48,23 @@ def class_section_grade(request, record_id):
 
     if request.GET.get('action') == 'download_roster_pdf':
         return section.download_roster_pdf()
+    if request.GET.get('action') == 'download_grades':
+        return grades_csv_response(section)
     if request.method == 'POST':
         return handle_grade_post(request, section, redirect_url=here)
 
+    grid = build_grid(section, post_url=here, next_url=here)
+    download = here + '?action=download_grades'
+    # The Class Details layout, with only the Grades and Notes tabs.
+    tabs = grade_page_tabs(request, section, render_to_string(
+        'grades/partials/_grade_grid.html',
+        {'grid': grid, 'grades_download_url': download}, request=request))
     return render(request, 'grades/instructor/class_section_grade.html', {
         'menu': draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor'),
         'class_section': section,
         'intro': portal_text('instructor').get('grades_blurb', ''),
         'page_messages': get_page_messages('instructor', 'grades', request),
-        'grid': build_grid(section, post_url=here, next_url=here),
+        'grid': grid,
+        'grades_download_url': download,
+        'tabs': tabs,
     })

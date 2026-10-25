@@ -13,22 +13,12 @@
   </nav>
   {% include 'cis/messages.html' %}
   {% if page_messages %}<div class="row">{% include 'cis/page_messages.html' %}</div>{% endif %}
-  <style>div.cell div.info{font-size:1.1em}div.cell div.label{text-transform:uppercase;font-size:.7em;font-weight:100}</style>
-  <div class="row">
-    <div class="col-md-4">
-      <div class="card mb-3">
-        <div class="card-header">Details</div>
-        <div class="card-body"><div class="row">
-          <div class="col-6"><div class="cell mb-3"><div class="info">{{ class_section.term }}</div><div class="label">Term</div></div></div>
-          <div class="col-6"><div class="cell mb-3"><div class="info">{{ class_section.course }}</div><div class="label">Course</div></div></div>
-          <div class="col-6"><div class="cell mb-3"><div class="info">{{ class_section }}</div><div class="label">Class #</div></div></div>
-          <div class="col-12"><div class="cell mb-3"><div class="info">{{ class_section.highschool|default:'' }}</div><div class="label">High School</div></div></div>
-          {% if class_section %}<div class="col-12"><a href="{% url 'instructor:class_section' class_section.id %}">Open class details</a></div>{% endif %}
-        </div></div>
-      </div>
-    </div>
-    <div class="col-md-8">{% include 'grades/partials/_grade_grid.html' %}</div>
-  </div>
+  {% if tabs %}
+    {# The Class Details layout (instructor portal), with Grades and Notes only. #}
+    {% include 'instructor/partials/_tabs.html' with tabs=tabs %}
+  {% else %}
+    {% include 'grades/partials/_grade_grid.html' %}
+  {% endif %}
 </main>
 <script src="{% static 'grades/js/grade_roster.js' %}"></script>
 {% endblock %}

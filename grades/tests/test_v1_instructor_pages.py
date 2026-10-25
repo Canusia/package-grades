@@ -93,3 +93,42 @@ class InstructorPagesTests(GradesTestCase):
         self.assertIn('Amador', html)
         self.assertIn(reverse('instructor:class_section_grade', args=[self.section.id]), html)
         self.assertIn(f'/instructor/class_section/{self.section.id}#grades', html)
+
+    def test_standalone_page_has_only_grades_and_notes_tabs(self):
+        if not (has_module('instructor.instructor.registry') or has_module('instructor.registry')):
+            self.skipTest('instructor portal not installed')
+        resp = self.client.get(reverse('instructor:class_section_grade', args=[self.section.id]))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('href="#grades"', html)
+        self.assertIn('href="#notes"', html)
+        for slug in ('details', 'class_roster', 'docs'):
+            self.assertNotIn(f'href="#{slug}"', html)
+        self.assertNotIn('card-header">Details', html)
+        self.assertIn('Amador', html)
+
+    def test_standalone_page_has_only_grades_and_notes_tabs(self):
+        if not (has_module('instructor.instructor.registry') or has_module('instructor.registry')):
+            self.skipTest('instructor portal not installed')
+        resp = self.client.get(reverse('instructor:class_section_grade', args=[self.section.id]))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('href="#grades"', html)
+        self.assertIn('href="#notes"', html)
+        for slug in ('details', 'class_roster', 'docs'):
+            self.assertNotIn(f'href="#{slug}"', html)
+        self.assertIn('Amador', html)
+        self.assertIn('?action=download_grades', html)
+
+    def test_download_grades_csv_has_a_column_per_period(self):
+        url = reverse('instructor:class_section_grade', args=[self.section.id])
+        resp = self.client.get(url + '?action=download_grades')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'text/csv')
+        lines = resp.content.decode().splitlines()
+        self.assertTrue(lines[0].endswith('Mid 1'))
+        self.assertIn('Amador', lines[1])
+
+    def test_download_grades_other_instructors_section_404(self):
+        url = reverse('instructor:class_section_grade', args=[self.other.id])
+        self.assertEqual(self.client.get(url + '?action=download_grades').status_code, 404)
