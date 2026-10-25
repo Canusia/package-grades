@@ -1,0 +1,68 @@
+{% comment %}
+Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.build_grid).
+{% endcomment %}
+{% load crispy_forms_tags %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Grades</span>
+    <a class="btn btn-sm btn-primary" href="?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;Download Roster</a>
+  </div>
+  <div class="card-body">
+    {% if not grid.has_periods %}
+      <p class="text-muted mb-0">No grading periods are set up for this class's term.</p>
+    {% else %}
+      {% if not grid.roster_gate_ok %}<div class="alert alert-warning">{{ grid.roster_gate_message|safe }}</div>{% endif %}
+      {% if grid.message %}<div class="mb-3">{{ grid.message|safe }}</div>{% endif %}
+      <form method="post" action="{{ grid.post_url }}"{% if grid.editable_period %} data-autosave="1"{% endif %}>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ grid.next_url }}">
+        {% if grid.editable_period %}
+          <input type="hidden" name="period" value="{{ grid.editable_period.id }}">
+          {{ grid.formset.management_form }}
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table table-striped js-sortable-roster">
+            <thead>
+              <tr>
+                {% for col in grid.columns %}
+                <th{% if col.sortable %} aria-sort="none"{% endif %}>{% if col.sortable %}<button type="button" class="btn btn-link p-0 font-weight-bold" data-sort-key="{{ col.key }}">{{ col.header }} <i class="fas fa-sort" aria-hidden="true"></i></button>{% else %}{{ col.header }}{% endif %}</th>
+                {% endfor %}
+                {% for p in grid.periods %}
+                <th class="{% if p.editable %}table-primary{% endif %}">
+                  {{ p.period.name }}{% if p.period.is_final %} <span class="badge badge-secondary">Final</span>{% endif %}
+                  <div class="small font-weight-normal {% if p.status == 'submitted' %}text-success{% else %}text-muted{% endif %}">{{ p.header }}</div>
+                </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in grid.rows %}
+              <tr{% for key, value in row.sort.items %} data-sort-{{ key|cut:'_' }}="{{ value }}"{% endfor %}>
+                {% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}
+                {% for p in grid.periods %}
+                  {% if p.editable and row.form %}
+                    <td>{{ row.form.student_id }}{{ row.form.student }}{{ row.form.grade|as_crispy_field }}<small class="autosave-status text-muted" aria-live="polite"></small></td>
+                  {% else %}
+                    <td>{% with mark=row.marks|slice:forloop.counter|last %}{% if mark and mark != '-' %}{{ mark }}{% else %}<span class="text-muted">–</span>{% endif %}{% endwith %}</td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+              {% empty %}
+              {% with ncols=grid.columns|length nperiods=grid.periods|length %}
+              <tr><td colspan="{{ ncols|add:nperiods }}" class="text-muted">No students on this roster.</td></tr>
+              {% endwith %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if grid.editable_period and grid.rows %}
+        <div class="text-right">
+          <small class="autosave-summary text-muted mr-2" aria-live="polite">Grades save automatically as a draft.</small>
+          <input type="submit" name="save_grade" class="btn btn-secondary btn-sm" value="Save Grades as 'Draft'">
+          <input type="submit" name="save_grade" class="btn btn-primary btn-sm" value="Submit {{ grid.editable_period.name }} Grades">
+        </div>
+        {% endif %}
+      </form>
+    {% endif %}
+  </div>
+</div>
