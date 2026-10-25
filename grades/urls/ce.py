@@ -17,6 +17,7 @@ from cis.utils import user_has_cis_role
 from ..views.ce import (
     ce_class_section_grade, delete_grading_period, manage_grading_period,
     reopen_period)
+from ..views.summary import summary, summary_remind
 from ..views.sis_sync import (
     SISRegistrationViewSet, SISSectionViewSet, sis_action, sis_sync_page)
 
@@ -46,6 +47,8 @@ urlpatterns = [
          name='class_section_grade'),
     path('class_section/<uuid:record_id>/period/<uuid:period_id>/reopen',
          ce_only(reopen_period), name='reopen_period'),
+    path('summary/', ce_only(summary), name='summary'),
+    path('summary/remind/', ce_only(summary_remind), name='summary_remind'),
 ]
 
 # Grades → SIS page. The feeds gate themselves (CIS role + configured pusher);

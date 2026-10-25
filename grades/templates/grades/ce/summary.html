@@ -1,0 +1,97 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}Grade Submission Summary{% endblock %}
+{% block body %}
+<main>
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Grade Summary</li>
+    </ol>
+  </nav>
+  {% include 'cis/messages.html' %}
+
+  <form method="get" class="form-inline mb-3">
+    <label class="mr-2" for="f-term">Term</label>
+    <select id="f-term" name="term" class="form-control mr-3">
+      {% for t in terms %}
+      <option value="{{ t.id }}" {% if t.id|stringformat:"s" in selected_term_ids %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <label class="mr-2" for="f-period">Grading Period</label>
+    <select id="f-period" name="period" class="form-control mr-3">
+      {% for p in periods %}
+      <option value="{{ p.id }}" {% if period and p.id == period.id %}selected{% endif %}>{{ p.term }} - {{ p.name }}</option>
+      {% endfor %}
+    </select>
+    <label class="mr-2" for="f-hs">High School</label>
+    <select id="f-hs" name="highschool" class="form-control mr-3" multiple>
+      {% for h in highschools %}
+      <option value="{{ h.id }}" {% if h.id|stringformat:"s" in selected_highschools %}selected{% endif %}>{{ h.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Apply</button>
+  </form>
+
+  {% if not period %}
+  <p class="text-muted">No grading periods for the selected term.</p>
+  {% else %}
+  <div class="row mb-3">
+    <div class="col-md-6">
+      <div class="card"><div class="card-header">By class</div>
+        <div class="card-body">
+          Submitted <strong>{{ data.classes.submitted }}</strong> &middot;
+          Draft <strong>{{ data.classes.saved }}</strong> &middot;
+          Not Started <strong>{{ data.classes.not_started }}</strong> &middot;
+          Total <strong>{{ data.classes.total }}</strong>
+        </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card"><div class="card-header">By instructor</div>
+        <div class="card-body">
+          Submitted <strong>{{ data.instructors.submitted }}</strong> &middot;
+          Draft <strong>{{ data.instructors.saved }}</strong> &middot;
+          Not Started <strong>{{ data.instructors.not_started }}</strong> &middot;
+          Total <strong>{{ data.instructors.total }}</strong>
+        </div></div>
+    </div>
+  </div>
+
+  <form method="post" action="{% url 'grades_ce:summary_remind' %}">
+    {% csrf_token %}
+    <input type="hidden" name="period" value="{{ period.id }}">
+    <div class="mb-2">
+      <button type="submit" class="btn btn-outline-primary">Send reminder to selected</button>
+      <button type="submit" name="all" value="1" class="btn btn-outline-secondary">Remind all not submitted</button>
+      <a class="btn btn-outline-secondary" href="?{{ request.GET.urlencode }}&amp;format=csv">Export CSV</a>
+    </div>
+    <table class="table table-sm table-striped">
+      <thead>
+        <tr><th></th><th>Instructor</th><th>Email</th><th>High School(s)</th><th>Classes</th>
+          <th>Submitted</th><th>Draft</th><th>Not Started</th><th>Status</th><th>Last Reminder</th><th>Class Sections</th></tr>
+      </thead>
+      <tbody>
+        {% for r in data.rows %}
+        <tr>
+          <td><input type="checkbox" name="teacher" value="{{ r.teacher_user.id }}" aria-label="Select {{ r.teacher_user.last_name }}"></td>
+          <td>{{ r.teacher_user.last_name }}, {{ r.teacher_user.first_name }}</td>
+          <td>{{ r.teacher_user.email }}</td>
+          <td>{{ r.highschools|join:", " }}</td>
+          <td>{{ r.classes }}</td>
+          <td>{{ r.submitted }}</td>
+          <td>{{ r.saved }}</td>
+          <td>{{ r.not_started }}</td>
+          <td>{% if r.status == 'submitted' %}<span class="badge badge-success">Submitted</span>
+              {% elif r.status == 'saved' %}<span class="badge badge-warning">Draft</span>
+              {% else %}<span class="badge badge-secondary">Not Started</span>{% endif %}</td>
+          <td>{{ r.last_notified_on|date:"m/d/Y"|default:"" }}</td>
+          <td>{% for s in r.sections %}<a href="{% url 'cis:section' s.id %}#grades">{{ s.class_number }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="11" class="text-muted">No classes for this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
+  {% endif %}
+</main>
+{% endblock %}

@@ -53,3 +53,32 @@ class GradesNavMigrationTests(SimpleTestCase):
         bad = {'ce_menu': 'not json'}
         self.assertEqual(migration.patch_ce_menu(bad), bad)
         self.assertEqual(migration.patch_ce_menu({}), {})
+
+
+class GradesV1NavMigrationTests(SimpleTestCase):
+    def setUp(self):
+        self.m = importlib.import_module(
+            f'{__package__.rsplit(".", 1)[0]}.migrations.0006_grades_v1_nav')
+
+    def _value(self, instructor):
+        ce = [{'name': 'classes', 'sub_menu': [{'name': 'sections'}, {'name': 'grades_sis_sync'}, {'name': 'x'}]}]
+        return {'ce_menu': json.dumps(ce), 'instructor_menu': json.dumps(instructor)}
+
+    def test_adds_both_items_in_place_and_is_idempotent(self):
+        out = self.m.patch_instructor_menu(self.m.patch_ce_menu(
+            self._value([{'name': 'students'}, {'name': 'z'}])))
+        ce = json.loads(out['ce_menu'])[0]['sub_menu']
+        self.assertEqual([s['name'] for s in ce], ['sections', 'grades_sis_sync', 'grades_summary', 'x'])
+        self.assertEqual([i['name'] for i in json.loads(out['instructor_menu'])], ['students', 'grades', 'z'])
+        again = self.m.patch_instructor_menu(self.m.patch_ce_menu(out))
+        self.assertEqual(again, out)
+
+    def test_existing_instructor_grades_item_untouched(self):
+        value = self._value([{'name': 'grades', 'url': 'old'}, {'name': 'students'}])
+        self.assertEqual(self.m.patch_instructor_menu(value), value)
+
+    def test_reverse_removes_by_name(self):
+        out = self.m.patch_instructor_menu(self.m.patch_ce_menu(self._value([{'name': 'students'}])))
+        back = self.m.patch_instructor_menu(self.m.patch_ce_menu(out, remove=True), remove=True)
+        self.assertEqual([i['name'] for i in json.loads(back['instructor_menu'])], ['students'])
+        self.assertNotIn('grades_summary', back['ce_menu'])
