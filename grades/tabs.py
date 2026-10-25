@@ -133,15 +133,11 @@ def _hs_admin_may_enter_grades(user, record):
           order=25, template='grades/hs_admin/_class_section_grades_tab.html',
           lazy=False, permission=_hs_admin_may_enter_grades)
 def hs_admin_grades_tab(request, record):
-    """Entry point to HS admin grade entry: one link per grading period.
+    """The shared grade grid, inline. `record` is the ClassSection."""
+    from django.urls import reverse
+    from .services.grade_grid import build_grid
 
-    `record` is the ClassSection. A term with no periods gets a single link,
-    matching the pre-periods behaviour of the grade-entry page.
-    """
-    from .services.periods import get_status, periods_for_section
-
-    periods = [
-        {'period': period, 'status': get_status(record, period)}
-        for period in periods_for_section(record)
-    ]
-    return {'periods': periods, 'status': ''}
+    return {'grid': build_grid(
+        record,
+        post_url=reverse('grades_highschool_admin:class_section_grade', args=[record.id]),
+        next_url=reverse('highschool_admin:class_section', args=[record.id]) + '#grades')}

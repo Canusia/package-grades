@@ -24,31 +24,19 @@ Ahead of even that, the whole view 404s unless CE has switched on
 ``hs_admin_grade_entry`` (default No), so the URL is not a way round the
 setting.
 """
-from django.shortcuts import render, get_object_or_404, redirect
+from django.shortcuts import render, get_object_or_404
 from django.http import Http404, HttpResponseNotFound
-from django.contrib import messages
-from django.forms.formsets import formset_factory
+from django.urls import reverse
 
 from cis.menu import draw_menu, HS_ADMIN_MENU
 from cis.models.section import ClassSection
-from cis.utils import is_submit_grades_open
 from cis.settings.highschool_admin_portal import (
     highschool_admin_portal as portal_lang,
 )
 
-from ..forms.section import ClassSectionGradeFormSet, ClassSectionGradeForm
-from ..services.roster import students_for_grades
-from .grade_entry import autosave, is_autosave, roster_row
-from ..services.gating import can_enter_grades, hs_admin_grade_entry_enabled
-from ..services.periods import (
-    periods_for_section,
-    resolve_period,
-    is_period_open,
-    grades_for,
-    get_status,
-    set_status,
-)
-from ..settings.class_section_grades import class_section_grades
+from ..services.gating import hs_admin_grade_entry_enabled
+from ..services.grade_grid import build_grid
+from .grade_entry import handle_grade_post
 
 
 def _hs_admin_context(request):
@@ -81,147 +69,23 @@ def class_section_grade(request, record_id):
     menu_data, highschools = _hs_admin_context(request)
     menu = draw_menu(menu_data, 'classes', '', 'highschool_admin')
 
-    class_section_info = get_object_or_404(ClassSection, pk=record_id)
+    section = get_object_or_404(ClassSection, pk=record_id)
 
     # AUTHORIZATION. Copied from highschool_admin/views/classes.py:class_section.
     # Placed above every other branch so it gates the POST as well as the GET.
-    if class_section_info.highschool is None or (
-        class_section_info.highschool.id
-        not in highschools.values_list('id', flat=True)
+    if section.highschool is None or (
+        section.highschool.id not in highschools.values_list('id', flat=True)
     ):
         return HttpResponseNotFound('Class section not found')
 
-    students_in_class = students_for_grades(class_section_info)
-
-    # Roster confirmation gate. Renders read-only while the roster is pending
-    # verification; the POST branch below is what actually prevents a write.
-    roster_gate_ok, roster_gate_message = can_enter_grades(class_section_info)
-
-    # Grading periods. A term with none configured keeps the old single-window
-    # behaviour exactly: period stays None and every downstream call falls back.
-    periods = periods_for_section(class_section_info)
-    if not periods:
-        raise Http404('No grading periods for this class.')
-    period = resolve_period(class_section_info, request.GET.get('period'))
-    if period is None:
-        raise Http404('Unknown grading period for this class section.')
-
-    window_open = is_period_open(period)
-    period_status = get_status(class_section_info, period)
-
-    settings = class_section_grades.from_db()
-    existing_marks = grades_for(class_section_info, period, students_in_class)
-    grade_data = [
-        roster_row(registration, existing_marks.get(registration.id, ''))
-        for registration in students_in_class
-    ]
-
-    GradeFS = formset_factory(
-        ClassSectionGradeForm,
-        formset=ClassSectionGradeFormSet,
-        extra=0,
-        validate_max=False,
-        min_num=1,
-        max_num=len(grade_data)
-    )
-    gradeformset = GradeFS(
-        initial=grade_data,
-        class_section=class_section_info,
-        period=period,
-        user=request.user
-    )
-
-    if is_autosave(request):
-        return autosave(
-            request, GradeFS, grade_data, class_section_info, period,
-            roster_gate_ok, roster_gate_message, window_open, period_status)
-
+    here = reverse('grades_highschool_admin:class_section_grade', args=[section.id])
+    tab = reverse('highschool_admin:class_section', args=[section.id]) + '#grades'
+    if request.GET.get('action') == 'download_roster_pdf':
+        return section.download_roster_pdf()
     if request.method == 'POST':
-        if not roster_gate_ok:
-            messages.add_message(
-                request,
-                messages.SUCCESS,
-                roster_gate_message,
-                'list-group-item-danger'
-            )
-            return redirect(
-                'grades_highschool_admin:class_section_grade',
-                record_id=class_section_info.id)
-
-        if not window_open:
-            messages.add_message(
-                request,
-                messages.SUCCESS,
-                f'Grade submission for {period.name} is currently closed.'
-                if period else 'Grade submission is currently closed.',
-                'list-group-item-success'
-            )
-            return redirect(
-                'highschool_admin:class_section',
-                record_id=class_section_info.id)
-
-        gradeformset = GradeFS(
-            request.POST,
-            initial=grade_data,
-            class_section=class_section_info,
-            period=period,
-            user=request.user
-        )
-
-        if request.GET.get('action') == 'download_roster_pdf':
-            return class_section_info.download_roster_pdf()
-
-        if 'Draft' in request.POST.get('save_grade', ''):
-            for form in gradeformset.forms:
-                form.fields['grade'].required = False
-
-        if gradeformset.is_valid():
-            gradeformset.save()
-
-            if 'Draft' in request.POST.get('save_grade', ''):
-                set_status(class_section_info, period, 'saved')
-                period_status = 'saved'
-
-                messages.add_message(
-                    request,
-                    messages.SUCCESS,
-                    'Your grades have been successfully saved.',
-                    'list-group-item-success')
-            else:
-                set_status(class_section_info, period, 'submitted')
-                period_status = 'submitted'
-
-                messages.add_message(
-                    request,
-                    messages.SUCCESS,
-                    'Your grades have been successfully submitted.',
-                    'list-group-item-success')
-        else:
-            messages.add_message(
-                request,
-                messages.SUCCESS,
-                'Please fix the errors below and try again.',
-                'list-group-item-danger')
-
-    if period_status == 'submitted':
-        message = settings.get('grades_submitted_class_section')
-    else:
-        message = settings.get('grades_open_class_section')
-
-    return render(
-        request,
-        'grades/hs_admin/class_section_grade.html',
-        {
-            'menu': menu,
-            'class_section': class_section_info,
-            'grade_formset': gradeformset,
-            'students_in_class': students_in_class,
-            'is_open': window_open,
-            'roster_gate_ok': roster_gate_ok,
-            'roster_gate_message': roster_gate_message,
-            'periods': periods,
-            'period': period,
-            'period_status': period_status,
-            'intro': portal_lang(request).from_db().get('class_blurb', 'Change me'),
-            'message': message
-        })
+        return handle_grade_post(request, section, redirect_url=tab)
+    return render(request, 'grades/hs_admin/class_section_grade.html', {
+        'menu': menu, 'class_section': section,
+        'intro': portal_lang(request).from_db().get('class_blurb', ''),
+        'grid': build_grid(section, post_url=here, next_url=here),
+    })

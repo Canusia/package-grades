@@ -382,11 +382,18 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertContains(response, self._url(section))
 
     @_needs_tab_registry
-    def test_on_tab_links_each_period(self):
+    def test_on_tab_renders_shared_grid_inline(self):
         section, _ = self._section()
-        period = self._period()
+        self._period()
         response = self._page(section)
-        self.assertContains(response, self._url(section, period))
+        self.assertContains(response, 'grades/js/grade_roster.js')
+        self.assertContains(response, 'action="%s"' % self._url(section))
+
+    @_needs_tab_registry
+    def test_on_tab_without_periods_shows_message_not_link(self):
+        section, _ = self._section()
+        response = self._page(section)
+        self.assertContains(response, 'No grading periods are set up')
 
     @_needs_tab_registry
     def test_off_no_tab(self):
