@@ -9,6 +9,7 @@ from cis.models.section import ClassSection
 from ..forms.section import ClassSectionGradeFormSet, ClassSectionGradeForm
 from cis.utils import grades_page_header_for_instructor, is_submit_grades_open
 from ..compat import portal_text
+from ..services.window import grade_terms as grade_terms_service
 from ..services.roster import students_for_grades
 from .grade_entry import autosave, is_autosave, roster_row
 from ..services.gating import can_enter_grades
@@ -27,7 +28,7 @@ def class_grades(request):
     menu = draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor')
     grade_settings = class_section_grades.from_db()
 
-    grade_term_ids = grade_settings.get('terms', [])
+    grade_term_ids = grade_terms_service()
     grade_terms = Term.objects.filter(pk__in=grade_term_ids)
 
     # Build API URL with all grade-open term IDs
@@ -45,7 +46,7 @@ def class_grades(request):
             'classes_api': classes_api,
             'require_roster_confirmation': grade_settings.get(
                 'require_roster_confirmation', False),
-            'grades_intro': grade_settings.get('grades_open') if is_submit_grades_open() else grade_settings.get('grades_closed'),
+            'grades_intro': grade_settings.get('grades_intro', ''),
         })
 
 
@@ -68,12 +69,14 @@ def class_section_grade(request, record_id):
     # Grading periods. A term with none configured keeps the old single-window
     # behaviour exactly: period stays None and every downstream call falls back.
     periods = periods_for_section(class_section_info)
+    if not periods:
+        raise Http404('No grading periods for this class.')
     period = resolve_period(class_section_info, request.GET.get('period'))
-    if periods and period is None:
+    if period is None:
         # A period id was supplied that does not belong to this section's term.
         raise Http404('Unknown grading period for this class section.')
 
-    window_open = is_period_open(period) if periods else is_submit_grades_open()
+    window_open = is_period_open(period)
     period_status = get_status(class_section_info, period)
 
     settings = class_section_grades.from_db()

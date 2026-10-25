@@ -5,6 +5,7 @@ XHR, and gets JSON back instead of the page. The gates (roster confirmation,
 grade window) must refuse an auto-save exactly as they refuse a full POST.
 """
 import json
+from datetime import date
 import re
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from django.contrib.auth.signals import user_logged_in
 from django.test import SimpleTestCase
 from . import factories as f
 from .base import GradesTestCase as TestCase
+from ..services.periods import set_status
 from django.urls import reverse
 
 try:
@@ -65,7 +67,6 @@ class GradeEntryAutosaveSortTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(
@@ -79,8 +80,6 @@ class GradeEntryAutosaveSortTests(TestCase):
             defaults={'value': {
                 'grades': 'A,B,C',
                 'registration_status': ['applied'],
-                'start_date': '01/01/2020',
-                'end_date': '01/01/2040',
             }},
         )
 
@@ -101,6 +100,8 @@ class GradeEntryAutosaveSortTests(TestCase):
         cls.section = ClassSection.objects.create(
             class_number='9101', section_number='01',
             term=term, course=course, teacher=teacher)
+        cls.period = f.period(
+            term, 'Final', date(2020, 1, 1), date(2040, 1, 1), is_final=True)
 
         cls.registrations = []
         for i, (first, last, psid) in enumerate(
@@ -165,9 +166,8 @@ class GradeEntryAutosaveSortTests(TestCase):
         self.assertEqual(first.grade, '')
 
     def test_autosave_refused_when_window_closed(self):
-        Setting.objects.filter(key=GRADES_KEY).update(value={
-            'grades': 'A,B,C', 'registration_status': ['applied'],
-            'start_date': '01/01/2020', 'end_date': '01/02/2020'})
+        self.period.due_on = date(2020, 1, 2)
+        self.period.save()
         first, second = self.registrations
         response = self.client.post(
             self.url, self._draft_post([(first, 'B'), (second, '')]), **XHR)
@@ -178,8 +178,7 @@ class GradeEntryAutosaveSortTests(TestCase):
         self.assertEqual(first.grade, '')
 
     def test_autosave_refused_after_final_submission(self):
-        self.section.grade_status = 'submitted'
-        self.section.save()
+        set_status(self.section, self.period, 'submitted')
         first, second = self.registrations
         response = self.client.post(
             self.url, self._draft_post([(first, 'B'), (second, '')]), **XHR)

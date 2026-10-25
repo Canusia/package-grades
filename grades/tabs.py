@@ -42,7 +42,7 @@ def sections_grades_tab(request, record):
     from .settings.class_section_grades import class_section_grades
 
     grade_settings = class_section_grades.from_db()
-    grade_term_ids = grade_settings.get('terms', [])
+    grade_term_ids = grade_terms()
 
     submitted_count = ClassSection.objects.filter(
         grade_status='submitted',
@@ -143,4 +143,4 @@ def hs_admin_grades_tab(request, record):
         {'period': period, 'status': get_status(record, period)}
         for period in periods_for_section(record)
     ]
-    return {'periods': periods, 'status': get_status(record, None)}
+    return {'periods': periods, 'status': ''}

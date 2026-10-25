@@ -49,7 +49,6 @@ TODAY = date(2033, 10, 15)
 class PeriodReminderTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         User.objects.get_or_create(
             username='cron', defaults={'email': 'cron@example.com'})
 
@@ -58,8 +57,6 @@ class PeriodReminderTests(TestCase):
             defaults={'value': {
                 'grades': 'A,B,C',
                 'registration_status': ['applied'],
-                'start_date': '01/01/2020',
-                'end_date': '01/01/2040',
                 'grades_due_subject': 'Grades are due',
                 'grades_due_email': (
                     'Hello {{teacher_first_name}} {{teacher_last_name}}, '

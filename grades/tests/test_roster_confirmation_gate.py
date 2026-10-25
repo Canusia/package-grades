@@ -11,6 +11,7 @@ outage rather than a tightening. See
 docs/superpowers/specs/2026-08-02-grades-roster-confirmation-gate-design.md
 """
 import json
+from datetime import date
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
@@ -53,7 +54,6 @@ class RosterConfirmationGateTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(
@@ -73,6 +73,7 @@ class RosterConfirmationGateTests(TestCase):
         ay = AcademicYear.objects.create(name='AY gate')
         cls.term = Term.objects.create(
             academic_year=ay, code='FA27', label='Fall 2027')
+        f.period(cls.term, 'Final', date(2020, 1, 1), date(2040, 1, 1), is_final=True)
         cohort = Cohort.objects.create(name='Cohort Gate', designator='CG')
         cls.course = Course.objects.create(
             catalog_number='301', title='Gate Course', cohort=cohort,
@@ -83,8 +84,6 @@ class RosterConfirmationGateTests(TestCase):
         value = {
             'grades': 'A,B,C',
             'registration_status': ['applied'],
-            'start_date': '01/01/2020',
-            'end_date': '01/01/2040',
         }
         value.update(overrides)
         Setting.objects.update_or_create(

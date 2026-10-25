@@ -11,9 +11,8 @@ Keeping the routing here means the entry view, the reminder job and any future
 consumer cannot disagree about where a mark belongs. An interim mark reaching
 `StudentRegistration.grade` would be exported to the SIS as a final grade.
 
-A term with no grading periods defined behaves exactly as it did before periods
-existed: `periods_for_section` returns an empty list and callers fall back to
-the single global grade window.
+A term with no grading periods has nothing to grade: `periods_for_section`
+returns `[]` and callers render a 'no grading periods' state.
 """
 import datetime
 
@@ -31,30 +30,37 @@ def periods_for_section(section):
     return list(GradingPeriod.objects.filter(term_id=section.term_id))
 
 
-def resolve_period(section, period_id=None):
-    """Pick which period the entry page is working on.
+def _require(period):
+    if period is None:
+        raise ValueError('period is required')
 
-    An explicit id wins, but only if it belongs to this section's term --
-    otherwise an instructor could grade against another term's period by
-    editing the querystring. Falls back to the period whose window is open
-    today, then to the first period.
+
+def open_period(section, on_date=None):
+    """The section's period open on ``on_date`` (periods never overlap)."""
+    for period in periods_for_section(section):
+        if is_period_open(period, on_date):
+            return period
+    return None
+
+
+def resolve_period(section, period_id=None, on_date=None):
+    """The period a grade page works on.
+
+    An explicit id wins only when it belongs to this section's term. Otherwise:
+    the open period; else the latest period that has started; else the first.
+    ``None`` when the term has no periods.
     """
     periods = periods_for_section(section)
     if not periods:
         return None
-
     if period_id:
-        for period in periods:
-            if str(period.id) == str(period_id):
-                return period
-        return None
-
-    today = datetime.date.today()
-    for period in periods:
-        if period.opens_on <= today <= period.due_on:
-            return period
-
-    return periods[0]
+        return next((p for p in periods if str(p.id) == str(period_id)), None)
+    today = on_date or datetime.date.today()
+    current = open_period(section, today)
+    if current is not None:
+        return current
+    started = [p for p in periods if p.opens_on <= today]
+    return started[-1] if started else periods[0]
 
 
 def is_period_open(period, on_date=None):
@@ -66,7 +72,8 @@ def is_period_open(period, on_date=None):
 
 def grades_for(section, period, registrations):
     """Map registration id -> existing mark for this period."""
-    if period is None or period.is_final:
+    _require(period)
+    if period.is_final:
         return {reg.id: reg.grade for reg in registrations}
 
     existing = PeriodGrade.objects.filter(
@@ -78,7 +85,8 @@ def grades_for(section, period, registrations):
 
 def save_mark(period, registration, grade, user=None):
     """Write one mark to whichever store the period routes to."""
-    if period is None or period.is_final:
+    _require(period)
+    if period.is_final:
         # Final grades stay on the registration -- the column the SIS reads.
         registration.grade = grade
         registration.save(update_fields=['grade'])
@@ -93,8 +101,7 @@ def save_mark(period, registration, grade, user=None):
 
 def get_status(section, period):
     """Current submission state for a (section, period)."""
-    if period is None:
-        return section.grade_status or ''
+    _require(period)
     row = SectionPeriodStatus.objects.filter(
         period=period, class_section=section).first()
     return row.status if row else ''
@@ -109,11 +116,7 @@ def set_status(section, period, status):
     `grade_status` keeps working: the CE sections-list grade stats, the
     grade-submitted instructor email, and `StudentRegistration.submitted_grade`.
     """
-    if period is None:
-        section.grade_status = status
-        section.save()
-        return
-
+    _require(period)
     row, _ = SectionPeriodStatus.objects.get_or_create(
         period=period, class_section=section)
 
@@ -128,3 +131,26 @@ def set_status(section, period, status):
     if period.is_final:
         section.grade_status = status
         section.save()
+
+
+def is_period_editable(section, period, on_date=None):
+    """Open, not yet submitted, and the roster gate passes."""
+    from .gating import can_enter_grades
+    if period is None or not is_period_open(period, on_date):
+        return False
+    if get_status(section, period) == 'submitted':
+        return False
+    return can_enter_grades(section)[0]
+
+
+def statuses_for(section, periods):
+    """{period_id: SectionPeriodStatus} for the rows that exist."""
+    return {
+        row.period_id: row for row in SectionPeriodStatus.objects.filter(
+            class_section=section, period__in=periods)
+    }
+
+
+def marks_by_period(section, periods, registrations):
+    """{period_id: {registration_id: mark}} for every period."""
+    return {p.id: grades_for(section, p, registrations) for p in periods}

@@ -19,6 +19,7 @@ except Exception:  # pragma: no cover
     _login_history_post_login = None
 
 import json
+from datetime import date
 
 from cis.models.term import AcademicYear, Term
 from cis.models.course import Cohort, Course
@@ -50,7 +51,6 @@ class ClassSectionGradeIDORTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
 
         # The grade-detail GET render path instantiates the instructor_portal
@@ -82,6 +82,7 @@ class ClassSectionGradeIDORTests(TestCase):
         term = Term.objects.create(
             academic_year=ay, code='FA25', label='Fall 2025',
         )
+        f.period(term, 'Final', date(2020, 1, 1), date(2040, 1, 1), is_final=True)
         cohort = Cohort.objects.create(name='Cohort One', designator='C1')
         course = Course.objects.create(
             catalog_number='101', title='Intro', cohort=cohort, credit_hours=3,
@@ -147,7 +148,6 @@ class ClassSectionGradeCrossSectionWriteTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         # Student.save() assigns the 'student' group; it must exist.
         Group.objects.get_or_create(name='student')
@@ -166,8 +166,6 @@ class ClassSectionGradeCrossSectionWriteTests(TestCase):
             defaults={'value': {
                 'grades': 'A,B,C',
                 'registration_status': ['applied'],
-                'start_date': '01/01/2020',
-                'end_date': '01/01/2040',
             }},
         )
 
@@ -185,6 +183,7 @@ class ClassSectionGradeCrossSectionWriteTests(TestCase):
 
         ay = AcademicYear.objects.create(name='AY 2026-2027 xsec')
         term = Term.objects.create(academic_year=ay, code='FA26', label='Fall 2026')
+        f.period(term, 'Final', date(2020, 1, 1), date(2040, 1, 1), is_final=True)
         cohort = Cohort.objects.create(name='Cohort XSec', designator='CX')
         course = Course.objects.create(
             catalog_number='201', title='Intro XSec', cohort=cohort, credit_hours=3)

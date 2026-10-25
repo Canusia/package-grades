@@ -53,7 +53,6 @@ class PeriodGradeEntryTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(
@@ -137,10 +136,11 @@ class PeriodGradeEntryTests(TestCase):
             'save_grade': 'Submit',
         })
 
-    # -- no periods configured: unchanged behaviour ------------------------
+    # -- a single final period: writes the registration grade --------------
 
-    def test_no_periods_writes_registration_grade_as_before(self):
+    def test_final_period_writes_registration_grade(self):
         section, registration = self._section()
+        self._period(name='Final', is_final=True)
 
         self._post(section, registration)
 

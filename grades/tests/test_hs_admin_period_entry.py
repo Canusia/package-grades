@@ -65,7 +65,6 @@ class HSAdminPeriodGradeEntryTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='highschool_admin')
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(
@@ -79,8 +78,6 @@ class HSAdminPeriodGradeEntryTests(TestCase):
             defaults={'value': {
                 'grades': 'A,B,C',
                 'registration_status': ['applied'],
-                'start_date': '01/01/2020',
-                'end_date': '01/01/2040',
                 'hs_admin_grade_entry': 'Yes',
             }},
         )
@@ -188,6 +185,7 @@ class HSAdminPeriodGradeEntryTests(TestCase):
 
     def test_own_school_autosave_saves_draft(self):
         section, registration = self._section()
+        self._period('Final', is_final=True)
 
         resp = self._autosave(section, registration, grade='C')
 
@@ -210,6 +208,7 @@ class HSAdminPeriodGradeEntryTests(TestCase):
 
     def test_page_wires_autosave_and_sorting(self):
         section, _registration = self._section()
+        self._period('Final', is_final=True)
 
         resp = self.client.get(self._url(section))
 
@@ -222,6 +221,7 @@ class HSAdminPeriodGradeEntryTests(TestCase):
 
     def test_own_school_get_renders(self):
         section, _registration = self._section()
+        self._period('Final', is_final=True)
 
         resp = self.client.get(self._url(section))
 
@@ -229,6 +229,7 @@ class HSAdminPeriodGradeEntryTests(TestCase):
 
     def test_own_school_post_writes_grade(self):
         section, registration = self._section()
+        self._period('Final', is_final=True)
 
         self._post(section, registration, grade='B')
 

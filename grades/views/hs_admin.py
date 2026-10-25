@@ -100,11 +100,13 @@ def class_section_grade(request, record_id):
     # Grading periods. A term with none configured keeps the old single-window
     # behaviour exactly: period stays None and every downstream call falls back.
     periods = periods_for_section(class_section_info)
+    if not periods:
+        raise Http404('No grading periods for this class.')
     period = resolve_period(class_section_info, request.GET.get('period'))
-    if periods and period is None:
+    if period is None:
         raise Http404('Unknown grading period for this class section.')
 
-    window_open = is_period_open(period) if periods else is_submit_grades_open()
+    window_open = is_period_open(period)
     period_status = get_status(class_section_info, period)
 
     settings = class_section_grades.from_db()

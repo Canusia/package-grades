@@ -1,5 +1,6 @@
 """Shared fixtures for the SIS grade-push tests."""
 import json
+from datetime import date
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
@@ -24,7 +25,6 @@ class SISFixtureMixin:
 
     @classmethod
     def setUpTestData(cls):
-        cls.enterClassContext(factories.keep_legacy_window())
         # The mixin precedes GradesTestCase in the MRO, so enter the campus here.
         cls._enter_test_campus()
         Group.objects.get_or_create(name='instructor')
@@ -41,10 +41,8 @@ class SISFixtureMixin:
         Setting.objects.update_or_create(key=GRADES_KEY, defaults={'value': {
             'grades': 'A,B,C',
             'registration_status': ['applied'],
-            'terms': [str(cls.term.id)],
-            'start_date': '01/01/2020',
-            'end_date': '01/01/2040',
         }})
+        factories.period(cls.term, 'Final', date(2020, 1, 1), date(2040, 1, 1), is_final=True)
 
         teacher_user = User.objects.create_user(
             username='sis_teacher', email='sis_teacher@example.com', password='x')

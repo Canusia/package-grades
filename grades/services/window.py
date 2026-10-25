@@ -1,79 +1,57 @@
 """
-Grade window / grade-scale services.
-
-Lifted verbatim from ``cis/utils.py`` (the "Start Grades Module" block) as part of
-the grades dependency inversion. Behavior is intentionally unchanged, including the
-bare ``except``, the ``'11/01/2035'`` fallback and the ``'-'`` returns.
+Grade-window / grade-scale services, driven by grading periods.
 
 Imports of ``cis`` models are lazy (inside function bodies) to avoid app-loading
-order problems, matching the code these functions were lifted from.
+order problems.
 """
 import datetime
 
 
-def is_submit_grades_open():
-    """Is the grade submission window currently open?"""
-    try:
-        from ..settings.class_section_grades import class_section_grades
+def grade_terms():
+    """Ids (str) of every term with at least one grading period."""
+    from ..models import GradingPeriod
+    return [str(t) for t in GradingPeriod.objects.values_list('term_id', flat=True).distinct()]
 
-        now = datetime.datetime.now()
-        settings = class_section_grades.from_db()
 
-        start_date = datetime.datetime.strptime(
-            settings.get('start_date'),
-            '%m/%d/%Y'
-        )
-        if now < start_date:
-            return False
+def current_grade_terms(on_date=None):
+    """Grade terms with a period open or still to come on ``on_date``."""
+    from ..models import GradingPeriod
+    on_date = on_date or datetime.date.today()
+    return [str(t) for t in GradingPeriod.objects.filter(due_on__gte=on_date)
+            .values_list('term_id', flat=True).distinct()]
 
-        end_date = datetime.datetime.strptime(
-            settings.get('end_date'),
-            '%m/%d/%Y'
-        )
-        if now > end_date:
-            return False
-        return True
-    except:
-        return False
+
+def is_submit_grades_open(on_date=None):
+    """Is any grading period open on ``on_date``? (No user: used by cis.)"""
+    from ..models import GradingPeriod
+    on_date = on_date or datetime.date.today()
+    return GradingPeriod.objects.filter(opens_on__lte=on_date, due_on__gte=on_date).exists()
 
 
 def can_view_grades():
-    """Is the grade *viewing* window currently open?"""
-    from ..settings.class_section_grades import class_section_grades
-
-    now = datetime.datetime.now()
-    settings = class_section_grades.from_db()
-
-    start_date = datetime.datetime.strptime(
-        settings.get('viewable_from_date'),
-        '%m/%d/%Y'
-    )
-    if now < start_date:
-        return False
-
-    end_date = datetime.datetime.strptime(
-        settings.get('viewable_end_date'),
-        '%m/%d/%Y'
-    )
-    if now > end_date:
-        return False
+    """Kept for cis.integrations.grades; visibility is per period now."""
     return True
 
 
 def page_header_for_instructor():
-    """Header blurb shown on the instructor grades pages.
-
-    Was ``cis.utils.grades_page_header_for_instructor``.
-    """
     from ..settings.class_section_grades import class_section_grades
+    return class_section_grades.from_db().get('grades_intro', '')
 
-    settings = class_section_grades.from_db()
 
-    header = settings.get('grades_closed')
-    if is_submit_grades_open():
-        header = settings.get('grades_open')
-
-    return header
+def selected_term_ids(request, available_ids, on_date=None):
+    """Term ids chosen with ``?term=`` (repeatable), limited to ``available_ids``;
+    default: the available terms that are current (open or upcoming), else the
+    most recent available term."""
+    available = [str(t) for t in available_ids]
+    chosen = [t for t in request.GET.getlist('term') if t in available]
+    if chosen:
+        return chosen
+    current = [t for t in current_grade_terms(on_date) if t in available]
+    if current:
+        return current
+    from cis.models.term import Term
+    latest = Term.objects.filter(pk__in=available).order_by('-code').first()
+    return [str(latest.id)] if latest else []
 
 
 def grade_scale():
@@ -89,28 +67,12 @@ def grade_scale():
     return settings.get('grades', '').split(',')
 
 
-def grade_terms():
-    """Term ids currently open for grading (the ``terms`` setting value)."""
-    from ..settings.class_section_grades import class_section_grades
-
-    settings = class_section_grades.from_db()
-
-    return settings.get('terms', [])
-
-
 def submitted_grade(registration):
-    """The grade to show a student for ``registration``, or ``'-'``.
-
-    Was the ``StudentRegistration.submitted_grade`` property.
-    """
-    if not registration.class_section.grade_submitted:
+    """The final grade a student may see: only once the final period is submitted."""
+    from .periods import get_status
+    from ..models import GradingPeriod
+    final = GradingPeriod.objects.filter(
+        term_id=registration.class_section.term_id, is_final=True).first()
+    if final is None or get_status(registration.class_section, final) != 'submitted':
         return '-'
-
-    from ..settings.class_section_grades import class_section_grades
-    configs = class_section_grades.from_db()
-
-    # if today is before configs['end_date'] then return '-'
-    if datetime.datetime.now() < datetime.datetime.strptime(configs.get('start_date', '11/01/2035'), '%m/%d/%Y'):
-        return '-'
-
     return registration.grade
