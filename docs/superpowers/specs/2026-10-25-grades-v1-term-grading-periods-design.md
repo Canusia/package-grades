@@ -36,6 +36,7 @@ Success means:
 | 8 | The HS admin grade page follows the same layout and rules, from shared code. |
 | 9 | Each period has a **visible to students** flag; the dead viewable-date settings go. |
 | 10 | Grades is a **tab on the instructor Class Details page** (registered by grades), and the standalone grade page is kept, rebuilt in the same layout. |
+| 11 | CE gets a Grades tab on its Class Details page, a grade-submission summary page and mid-semester grade reports, all from the grades package. |
 
 ## 1. Data model and settings
 
@@ -231,6 +232,8 @@ supplied through the column hook.
 
 ## 4. Release, upgrade, testing
 
+(Section 5 below adds the CE features; its tests join this list.)
+
 ### Release
 
 `v1.0.0` from branch `feat/v1-term-grading-periods`. No `cis` or
@@ -269,10 +272,66 @@ migration, the retired job and the new fields.
 - Banner push unchanged (final period submitted only).
 - Existing suite updated where it assumed the old window.
 
+## 5. CE staff: class Grades tab, submission summary, reports
+
+All three live in the grades package; no `cis` change is needed.
+
+### CE Class Details — Grades tab
+
+- Registered from `tabs.py` on `myce.component_registry.class_section`
+  `class_section_tabs` (the CE class detail page,
+  `/ce/sections/<id>`), `slug='grades'`, `title='Grades'`, after Drop
+  Requests. Skipped when the host has no such registry (`compat.registry`).
+- Renders the shared grid (section 3) **read-only by default**, so CE sees
+  exactly what the instructor sees: every period, each period's status and
+  history (`SectionPeriodStatus.status_changed_on`, last reminder date).
+- CE may **edit and submit on the instructor's behalf** for any period
+  (open or not), and may **reopen** a submitted period (status back to
+  `saved`). Both are logged as a class note naming the staff user. Gated by
+  the CE role.
+
+### Grade submission summary page
+
+`/ce/grades/summary/` (URL in `urls/ce.py`, CE role only), linked from the CE
+menu and from the CE sections list Grades tab.
+
+- Filters: term switcher (grade terms; default `current_grade_terms()`),
+  grading period (defaults to the open one, else the most recent), campus
+  (multi-campus tenants), high school.
+- Headline counts for the selected period, by **class** and by
+  **instructor**:
+  - Submitted, Draft (saved, not submitted), Not Started (no response).
+  - An instructor counts as Submitted only when all of their classes in the
+    period are submitted; Draft when any is saved; otherwise Not Started.
+- Table, one row per instructor: name, email, high school(s), classes in the
+  period, submitted / draft / not started counts, last reminder sent,
+  drill-down to the CE Class Details Grades tab of each class.
+- Action **Send reminder** (selected or all not-submitted instructors) using
+  the Grades Due email and the same no-double-send rule as the job.
+- Export the table as CSV.
+
+### Reports (report framework, `REPORTS` in `apps.py`)
+
+- **Period Grades** (`period_grades`): one row per registration per selected
+  period — term, period, course, class/section no., instructor, high school,
+  student name and ID, registration status, grade, period status, submitted
+  on. Filters: terms, periods (one or several; several give one grade column
+  per period), campus, high school, period status. Categories: Students,
+  Classes. Available for: ce.
+- **Grade Submission Status** (`period_submission_status`): the summary
+  table above as a report — one row per class per period with status,
+  status-changed-on and last reminder date. Replaces the final-only view of
+  **Class Grade Status**, which stays and keeps reading the final period.
+- The existing distribution reports (by course, demographics, high school)
+  gain a **Grading period** filter (default: final), so mid-semester
+  distributions can be run too.
+
+Tests: tab registration and read-only default; CE edit/reopen logged; summary
+counts per class and per instructor; reminder action no-double-send; each
+report's rows and filters.
+
 ## Out of scope
 
 - Copying a term's periods from another term.
 - Automatic push of final grades to Banner.
-- Any `cis` change. Follow-ups tracked separately: the CE Class Details
-  Grades tab (cis), a CE grade-submission summary page, and mid-semester
-  grade export reports.
+- Any `cis` change.
