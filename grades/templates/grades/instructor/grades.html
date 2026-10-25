@@ -12,7 +12,8 @@
     <form method="get" class="form-inline mb-3">
       <label class="mr-2" for="id_term">Term</label>
       <select id="id_term" name="term" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
-        {% for t in terms %}<option value="{{ t.id }}"{% if t.id|stringformat:'s' in selected_term_ids %} selected{% endif %}>{{ t.label }}</option>{% endfor %}
+        <option value=""{% if not term_choice %} selected{% endif %}>All current terms</option>
+        {% for t in terms %}<option value="{{ t.id }}"{% if t.id|stringformat:'s' == term_choice %} selected{% endif %}>{{ t.label }}</option>{% endfor %}
       </select>
     </form>
     <table id="records_classes" class="table table-striped responsive" style="width:100%">

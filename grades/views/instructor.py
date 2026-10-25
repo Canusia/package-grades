@@ -6,7 +6,9 @@ from cis.models.term import Term
 from cis.models.section import ClassSection
 from cis.page_messages import get_page_messages
 from ..compat import portal_text
-from ..services.window import grade_terms as grade_terms_service, selected_term_ids
+from ..services.window import (
+    chosen_term_id, grade_terms as grade_terms_service, selected_term_ids,
+)
 from ..services.class_list import class_rows
 from ..services.grade_grid import build_grid
 from ..settings.class_section_grades import class_section_grades
@@ -29,6 +31,7 @@ def class_grades(request):
         'page_messages': get_page_messages('instructor', 'grades', request),
         'terms': Term.objects.filter(pk__in=available).order_by('-code'),
         'selected_term_ids': selected,
+        'term_choice': chosen_term_id(request, available),
         'require_roster_confirmation': settings.get('require_roster_confirmation', False),
         'rows': class_rows(sections),
     })

@@ -111,6 +111,15 @@ class SISPageTests(_SISPageBase):
         self.assertIn(f'value="{self.highschool.id}"', html)
         self.assertIn(f'value="{hs_section.id}"', html)
 
+    def test_term_filter_defaults_to_no_filter(self):
+        """The term filters start on '' (no filter); ?term=<id> preselects that term."""
+        html = self.client.get(reverse('grades_ce:sis_sync')).content.decode()
+        self.assertEqual(html.count('<option value="" selected>All grade terms</option>'), 2)
+        self.assertNotIn(f'value="{self.term.id}" selected', html)
+        html = self.client.get(reverse('grades_ce:sis_sync'), {'term': str(self.term.id)}).content.decode()
+        self.assertEqual(html.count(f'value="{self.term.id}" selected'), 2)
+        self.assertNotIn('<option value="" selected>', html)
+
     def test_buttons_render_from_registry(self):
         action = grade_sis_actions._find_action('send_sections')
         with patch.dict(action, {'label': 'SENTINELLABEL', 'confirm': 'SENTINELCONFIRM'}):

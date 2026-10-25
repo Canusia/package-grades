@@ -41,7 +41,7 @@ def sections_grades_tab(request, record):
     from cis.models.term import Term
 
     from .models import GradingPeriod, SectionPeriodStatus
-    from .services.window import grade_terms, selected_term_ids
+    from .services.window import chosen_term_id, grade_terms, selected_term_ids
 
     available = grade_terms()
     selected = selected_term_ids(request, available)
@@ -67,6 +67,7 @@ def sections_grades_tab(request, record):
     return {
         'terms': Term.objects.filter(pk__in=available).order_by('-code'),
         'selected_term_ids': selected,
+        'term_choice': chosen_term_id(request, available),
         'period_stats': period_stats,
         'grade_distribution': list(grade_distribution),
         'grade_total': sum(i['count'] for i in grade_distribution),

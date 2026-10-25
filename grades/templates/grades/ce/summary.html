@@ -13,8 +13,9 @@
   <form method="get" class="form-inline mb-3">
     <label class="mr-2" for="f-term">Term</label>
     <select id="f-term" name="term" class="form-control mr-3">
+      <option value=""{% if not term_choice %} selected{% endif %}>All current terms</option>
       {% for t in terms %}
-      <option value="{{ t.id }}" {% if t.id|stringformat:"s" in selected_term_ids %}selected{% endif %}>{{ t }}</option>
+      <option value="{{ t.id }}" {% if t.id|stringformat:"s" == term_choice %}selected{% endif %}>{{ t }}</option>
       {% endfor %}
     </select>
     <label class="mr-2" for="f-period">Grading Period</label>

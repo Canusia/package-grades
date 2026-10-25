@@ -92,6 +92,14 @@ class SummaryViewTests(GradesTestCase):
         self.assertContains(resp, 'Mid')
         self.assertContains(resp, self.t1.user.email)
 
+    def test_term_switcher_defaults_to_all_current_terms(self):
+        resp = self.client.get(reverse('grades_ce:summary'))
+        self.assertContains(resp, '<option value="" selected>All current terms</option>')
+        self.assertContains(resp, self.t1.user.email)
+        resp = self.client.get(reverse('grades_ce:summary'), {'term': str(self.term.id)})
+        self.assertContains(resp, f'<option value="{self.term.id}" selected>')
+        self.assertNotContains(resp, '<option value="" selected>')
+
     def test_csv_export(self):
         resp = self.client.get(reverse('grades_ce:summary') + f'?period={self.mid.id}&format=csv')
         self.assertEqual(resp['Content-Type'], 'text/csv')

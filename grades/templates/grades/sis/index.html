@@ -31,8 +31,8 @@
             <div class="col-md-4 mb-2">
               <label for="sis-sections-term-filter">Term</label>
               <select id="sis-sections-term-filter" class="form-control sis-sections-filter">
-                <option value="">All grade terms</option>
-                {% for term in terms %}<option value="{{ term.id }}"{% if term.id|stringformat:"s" in selected_term_ids %} selected{% endif %}>{{ term.code }} {{ term.label }}</option>{% endfor %}
+                <option value=""{% if not term_choice %} selected{% endif %}>All grade terms</option>
+                {% for term in terms %}<option value="{{ term.id }}"{% if term.id|stringformat:"s" == term_choice %} selected{% endif %}>{{ term.code }} {{ term.label }}</option>{% endfor %}
               </select>
             </div>
             <div class="col-md-4 mb-2">
@@ -68,8 +68,8 @@
             <div class="col-md-4 mb-2">
               <label for="sis-registrations-term-filter">Term</label>
               <select id="sis-registrations-term-filter" class="form-control sis-registrations-filter">
-                <option value="">All grade terms</option>
-                {% for term in terms %}<option value="{{ term.id }}"{% if term.id|stringformat:"s" in selected_term_ids %} selected{% endif %}>{{ term.code }} {{ term.label }}</option>{% endfor %}
+                <option value=""{% if not term_choice %} selected{% endif %}>All grade terms</option>
+                {% for term in terms %}<option value="{{ term.id }}"{% if term.id|stringformat:"s" == term_choice %} selected{% endif %}>{{ term.code }} {{ term.label }}</option>{% endfor %}
               </select>
             </div>
             <div class="col-md-4 mb-2">

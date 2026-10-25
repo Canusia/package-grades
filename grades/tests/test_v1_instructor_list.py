@@ -57,3 +57,25 @@ class InstructorListTests(GradesTestCase):
         self.assertNotContains(resp, self.s_past.class_number)
         resp = self.client.get(reverse('instructor:grades'), {'term': str(self.past.id)})
         self.assertContains(resp, self.s_past.class_number)
+
+    def test_all_current_terms_is_the_default_option(self):
+        today = date.today()
+        now2 = f.term(label='Fall Now Two')
+        f.period(now2, 'Mid A', today - timedelta(days=1), today + timedelta(days=3))
+        s_now2 = f.section(now2, self.teacher)
+        self.client.force_login(self.teacher.user)
+        all_current = '<option value="" selected>All current terms</option>'
+        for params in ({}, {'term': ''}):
+            with self.subTest(params=params):
+                resp = self.client.get(reverse('instructor:grades'), params)
+                self.assertContains(resp, all_current)
+                self.assertContains(resp, self.s_now.class_number)
+                self.assertContains(resp, s_now2.class_number)
+                self.assertNotContains(resp, self.s_past.class_number)
+                self.assertNotContains(resp, f'value="{self.now.id}" selected')
+                self.assertNotContains(resp, f'value="{now2.id}" selected')
+        resp = self.client.get(reverse('instructor:grades'), {'term': str(now2.id)})
+        self.assertContains(resp, s_now2.class_number)
+        self.assertNotContains(resp, self.s_now.class_number)
+        self.assertContains(resp, f'value="{now2.id}" selected')
+        self.assertNotContains(resp, all_current)

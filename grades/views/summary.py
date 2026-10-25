@@ -17,7 +17,7 @@ from ..compat import picker_queryset
 from ..models import GradingPeriod
 from ..services.csv_safe import safe_cell
 from ..services.summary import remind, summarize
-from ..services.window import grade_terms, selected_term_ids
+from ..services.window import chosen_term_id, grade_terms, selected_term_ids
 
 
 def _period(request, term_ids):
@@ -66,7 +66,8 @@ def summary(request):
     return render(request, 'grades/ce/summary.html', {
         'menu': draw_menu(cis_menu, 'classes', 'grades_summary'),
         'terms': Term.objects.filter(pk__in=available).order_by('-code'),
-        'selected_term_ids': selected, 'periods': periods, 'period': period,
+        'selected_term_ids': selected, 'term_choice': chosen_term_id(request, available),
+        'periods': periods, 'period': period,
         'highschools': picker_queryset(), 'selected_highschools': hs_ids, 'data': data,
     })
 

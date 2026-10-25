@@ -69,6 +69,14 @@ def selected_term_ids(request, available_ids, on_date=None):
     return [str(latest.id)] if latest else []
 
 
+def chosen_term_id(request, available_ids):
+    """The one term picked in a term switcher (``?term=<id>``), or ``''`` for
+    its default "All current terms" option (no ``term``, or ``term=``), which
+    ``selected_term_ids`` serves as the current terms."""
+    available = {str(t) for t in available_ids}
+    return next((t for t in request.GET.getlist('term') if t in available), '')
+
+
 def grade_scale():
     """The configured grade scale as a list of grade strings.
 

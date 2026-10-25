@@ -25,7 +25,7 @@ from ..models import GradeSISSync, GradeSISSyncAttempt
 from ..serializers import SISRegistrationSerializer, SISSectionSerializer
 from ..services import sis_push
 from ..services.roster import roster_statuses
-from ..services.window import grade_terms, selected_term_ids
+from ..services.window import chosen_term_id, grade_terms, selected_term_ids
 
 SYNC_STATUS_FILTERS = {'not_sent', GradeSISSync.QUEUED, GradeSISSync.SENT,
                        GradeSISSync.FAILED, GradeSISSync.NEEDS_MIRRORING}
@@ -253,6 +253,7 @@ def sis_sync_page(request):
         'registration_columns': REGISTRATION_COLUMNS,
         'terms': Term.objects.filter(pk__in=available_terms).order_by('-code'),
         'selected_term_ids': selected_term_ids(request, available_terms),
+        'term_choice': chosen_term_id(request, available_terms),
         'highschools': HighSchool.objects.filter(
             pk__in=sections.values('highschool_id')).order_by('name'),
         'filter_sections': (ClassSection.objects.filter(term_id__in=available_terms)
