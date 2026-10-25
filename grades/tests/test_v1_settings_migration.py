@@ -53,10 +53,52 @@ class SettingsMigrationTests(GradesTestCase):
         f.grades_setting(terms='', start_date='', end_date='')
         _run()
         f.grades_setting(terms=['00000000-0000-0000-0000-000000000000'],
-                         start_date='not a date', end_date='12/09/2026')
+                         start_date='12/01/2026', end_date='12/09/2026')
+        lines = _run()
+        self.assertTrue(any('no such term' in line for line in lines))
+        t = f.term()
+        f.grades_setting(terms=[str(t.id)], start_date='not a date', end_date='12/09/2026')
         lines = _run()
         self.assertFalse(GradingPeriod.objects.exists())
-        self.assertTrue(any('skipped' in line for line in lines))
+        self.assertTrue(any('no usable start/end dates' in line for line in lines), lines)
+
+    def test_non_dict_value_and_non_list_terms(self):
+        from cis.models.settings import Setting
+        Setting.objects.update_or_create(key=f.grades_key(), defaults={'value': ['junk']})
+        lines = _run()
+        self.assertEqual(Setting.objects.get(key=f.grades_key()).value, ['junk'])
+        self.assertTrue(any('not a dict' in line for line in lines))
+        f.grades_setting(terms=42, start_date='12/01/2026', end_date='12/09/2026')
+        _run()
+        self.assertNotIn('terms', Setting.objects.get(key=f.grades_key()).value)
+
+    def test_iso_dates_accepted(self):
+        t = f.term()
+        f.grades_setting(terms=[str(t.id)], start_date='2026-12-01', end_date='2026-12-09')
+        _run()
+        p = GradingPeriod.objects.get(term=t)
+        self.assertEqual((p.opens_on, p.due_on), (date(2026, 12, 1), date(2026, 12, 9)))
+
+    def test_blank_intro_is_filled(self):
+        from cis.models.settings import Setting
+        f.grades_setting(grades_intro='', grades_open='<p>Open</p>')
+        _run()
+        self.assertEqual(Setting.objects.get(key=f.grades_key()).value['grades_intro'], '<p>Open</p>')
+
+    def test_existing_intro_kept(self):
+        from cis.models.settings import Setting
+        f.grades_setting(grades_intro='<p>Mine</p>', grades_open='<p>Open</p>')
+        _run()
+        self.assertEqual(Setting.objects.get(key=f.grades_key()).value['grades_intro'], '<p>Mine</p>')
+
+    def test_failing_row_is_logged_and_skipped(self):
+        from unittest.mock import patch
+        t = f.term()
+        f.grades_setting(terms=[str(t.id)], start_date='12/01/2026', end_date='12/09/2026')
+        with patch.object(GradingPeriod.objects, 'create', side_effect=RuntimeError('boom')):
+            lines = _run()  # must not raise
+        self.assertTrue(any('boom' in line for line in lines))
+        self.assertFalse(GradingPeriod.objects.exists())
 
     def test_no_setting_row(self):
         _run()  # must not raise
