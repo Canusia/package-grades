@@ -63,3 +63,8 @@ class SettingsPreviewTests(TestCase):
         self.assertNotIn('grades_submitted', links)
         for name in links:
             self.assertIsNotNone(self._preview(name), name)
+
+    def test_grades_intro_preview_renders(self):
+        response = self._preview('grades_intro')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('grades_intro', self._links())

@@ -19,6 +19,7 @@ from datetime import date, timedelta
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
+from . import factories as f
 from .base import GradesTestCase as TestCase
 
 from mailer.models import Message
@@ -48,6 +49,7 @@ TODAY = date(2033, 10, 15)
 class PeriodReminderTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.enterClassContext(f.keep_legacy_window())
         User.objects.get_or_create(
             username='cron', defaults={'email': 'cron@example.com'})
 

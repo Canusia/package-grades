@@ -33,7 +33,14 @@ NEW_KEY_DEFAULTS = {
     'student_transcript_enabled': 'Yes',
     'hs_admin_grade_entry': 'No',
     'student_grade_columns': student_table.DEFAULT,
+    'grades_intro': '',
 }
+
+# Removed in v1.0.0: grading periods own every date (spec §1).
+RETIRED_KEYS = (
+    'terms', 'start_date', 'end_date', 'reminder_dates', 'grades_open',
+    'grades_closed', 'viewable_from_date', 'viewable_end_date',
+)
 
 
 class GradeScaleField(forms.CharField):
@@ -85,22 +92,6 @@ class SettingForm(forms.Form):
         choices=StudentRegistration.STATUS_OPTIONS
     )
 
-    terms = forms.MultipleChoiceField(
-        choices=(),
-        label='Class Term(s)',
-        help_text='Class Section Term(s) for which grades can be submitted'
-    )
-
-    start_date = forms.DateField(
-        label='Grade Submission Window Starting Date',
-        help_text='Available to post grades on and after'
-    )
-
-    end_date = forms.DateField(
-        label='Grade Submission Due Date',
-        help_text='Available to post grades until'
-    )
-
     require_roster_confirmation = forms.BooleanField(
         required=False,
         label='Require roster confirmation before grades are entered',
@@ -124,21 +115,10 @@ class SettingForm(forms.Form):
         label="Roster Not Confirmed Message"
     )
 
-    reminder_dates = forms.CharField(
-        required=False,
-        help_text='Select specific dates to send grade reminders',
-        label="Reminder Dates",
-        widget=forms.TextInput(attrs={
-            'class': 'form-control reminder-dates-picker',
-            'placeholder': 'Click to select dates',
-            'readonly': 'readonly'
-        })
-    )
-
     send_grade_reminders = forms.ChoiceField(
         choices=YES_NO,
         label='Send Grades-Due Reminders',
-        help_text='When No, neither grades-due nor grading-period reminders are sent.',
+        help_text='When No, grading-period reminders are not sent.',
     )
 
     cron = forms.CharField(
@@ -158,21 +138,15 @@ class SettingForm(forms.Form):
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{term}}, {{number_of_sections_pending_grades}}, {{grading_period}} (grading period reminders only). <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_due\')" >See Preview</a>',
+        help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{term}}, {{number_of_sections_pending_grades}}, {{grading_period}}, {{due_date}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_due\')" >See Preview</a>',
         label="Grades Due Email Message")
    
-    grades_closed = forms.CharField(
+    grades_intro = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        help_text='Message displayed when grades are closed. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_closed\')" >See Preview</a>',
-        label="Grades Closed"
-    )
-
-    grades_open = forms.CharField(
-        max_length=None,
-        widget=forms.Textarea,
-        help_text='Message displayed when grades are open. This is in the all classes page. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_open\')" >See Preview</a>',
-        label="Grades Open"
+        required=False,
+        help_text='Shown above the instructor Grades class list. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_intro\')" >See Preview</a>',
+        label='Grades Intro'
     )
 
     grades_open_class_section = forms.CharField(
@@ -285,56 +259,6 @@ class SettingForm(forms.Form):
     )
 
 
-    def clean_start_date(self):
-        return self.data.get('start_date')
-
-    def clean_end_date(self):
-        start_date = datetime.datetime.strptime(
-            self.data.get('start_date'), '%m/%d/%Y'
-        )
-
-        end_date = datetime.datetime.strptime(
-            self.data.get('end_date'), '%m/%d/%Y'
-        )
-
-        if start_date > end_date:
-            raise ValidationError(
-                _(f'Open Until date has to be after Starting date.')
-            )
-
-        return self.data.get('end_date')
-
-    def clean_reminder_dates(self):
-        """Validate that reminder dates fall within the start/end date range."""
-        reminder_dates_str = self.data.get('reminder_dates', '')
-        if not reminder_dates_str:
-            return ''
-
-        start_date_str = self.data.get('start_date')
-        end_date_str = self.data.get('end_date')
-
-        if not start_date_str or not end_date_str:
-            return reminder_dates_str
-
-        try:
-            start_date = datetime.datetime.strptime(start_date_str, '%m/%d/%Y').date()
-            end_date = datetime.datetime.strptime(end_date_str, '%m/%d/%Y').date()
-
-            dates = [d.strip() for d in reminder_dates_str.split(',') if d.strip()]
-            for date_str in dates:
-                try:
-                    date = datetime.datetime.strptime(date_str, '%m/%d/%Y').date()
-                    if date < start_date or date > end_date:
-                        raise ValidationError(
-                            _(f'Reminder date {date_str} must be between {start_date_str} and {end_date_str}.')
-                        )
-                except ValueError:
-                    raise ValidationError(_(f'Invalid date format: {date_str}. Use MM/DD/YYYY.'))
-        except ValueError:
-            pass  # start_date or end_date parsing failed, skip validation
-
-        return reminder_dates_str
-
     def clean_grade_scale(self):
         """'' keeps the saved scale; anything else must be a valid scale (#7).
 
@@ -414,37 +338,19 @@ class SettingForm(forms.Form):
             is_submit_grades_open
         )
 
-        if field_name in ['grades_closed']:
+        if field_name == 'grades_intro':
             grade_settings = self.from_db()
             return render(
                 request,
                 'grades/instructor/grades.html',
                 {
                     'menu': '-1',
-                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'page_header': grades_page_header_for_instructor(),
-                    'is_open': False,
-                    'classes_api': '',
-                    'terms': None,
-                    'grades_intro': grade_settings.get('grades_closed') ,
-                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'active_term': None
-                })
-        elif field_name in ['grades_open']:
-            grade_settings = self.from_db()
-            return render(
-                request,
-                'grades/instructor/grades.html',
-                {
-                    'menu': '-1',
-                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'page_header': grades_page_header_for_instructor(),
-                    'is_open': True,
-                    'classes_api': '',
-                    'terms': None,
-                    'grades_intro': grade_settings.get('grades_open') ,
-                    'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-                    'active_term': None
+                    'intro': portal_text('instructor').get('grades_blurb', ''),
+                    'grades_intro': grade_settings.get('grades_intro', ''),
+                    'rows': [],
+                    'terms': [],
+                    'selected_term_ids': [],
+                    'page_messages': [],
                 })
         elif field_name in ['grades_open_class_section', 'grades_submitted_class_section',
                             'grades_submitted']:
@@ -517,14 +423,6 @@ class SettingForm(forms.Form):
         # would cascade away their run history, and both commands no-op on the
         # setting anyway (#2).
         if self.cleaned_data.get('send_grade_reminders') == 'Yes':
-            cron, created = CronTab.objects.get_or_create(
-                command='notify_grades_pending'
-            )
-            cron.cron = self.cleaned_data.get('cron')
-            cron.save()
-
-            # Grading-period reminders run on the same schedule; the command is a
-            # no-op on tenants that have defined no periods.
             period_cron, created = CronTab.objects.get_or_create(
                 command='notify_period_grades_pending'
             )
@@ -555,19 +453,14 @@ class SettingForm(forms.Form):
             'student_grades_visible': self.cleaned_data['student_grades_visible'],
             'student_transcript_enabled': self.cleaned_data['student_transcript_enabled'],
 
-            'reminder_dates': self.cleaned_data.get('reminder_dates', ''),
             'cron': self.cleaned_data.get('cron', ''),
             'grades_due_subject': self.cleaned_data['grades_due_subject'],
             'grades_due_email': self.cleaned_data['grades_due_email'],
 
             'grades_submitted_email': self.cleaned_data['grades_submitted_email'],
             'grades_submitted_email_subject': self.cleaned_data['grades_submitted_email_subject'],
-            'terms': self.cleaned_data['terms'],
-            'start_date': self.cleaned_data['start_date'],
-            'end_date': self.cleaned_data['end_date'],
 
-            'grades_closed': self.cleaned_data['grades_closed'],
-            'grades_open': self.cleaned_data['grades_open'],
+            'grades_intro': self.cleaned_data.get('grades_intro', ''),
             'grades_open_class_section': self.cleaned_data['grades_open_class_section'],
             'grades_submitted_class_section': self.cleaned_data['grades_submitted_class_section'],
             'transcript_template_header': self.cleaned_data.get('transcript_template_header', ''),
@@ -612,13 +505,6 @@ class class_section_grades(SettingForm):
     key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_class_grades"
     def __init__(self, request, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        term_list = []
-
-        for term in Term.objects.all().order_by('-code'):
-            term_list.append((str(term.id), str(term)))
-            
-        self.fields['terms'].choices = term_list
-
         self.request = request
         self.helper = FormHelper()
         self.helper.attrs = {'target':'_blank'}
@@ -641,11 +527,6 @@ class class_section_grades(SettingForm):
             'gpa_points': {item['grade']: item['points'] for item in grade_scale},
             'grades_submitted_email': 'Change Me',
             'grades_submitted_email_subject': 'Change Me',
-            'terms': '',
-            'start_date': '10/10/2040',
-            'end_date': '10/11/2040',
-            'grades_open': '-',
-            'grades_closed': '-',
             'grades_open_class_section': 'Change me',
             'grades_submitted_class_section': 'Change me',
             'transcript_template_header': '''<div class="row mb-4">
@@ -799,6 +680,8 @@ class class_section_grades(SettingForm):
             # Absent only: '' and 'No' are real choices for these (#2).
             for key, default_value in NEW_KEY_DEFAULTS.items():
                 values.setdefault(key, default_value)
+            for key in RETIRED_KEYS:
+                values.pop(key, None)
             return values
         except Setting.DoesNotExist:
             return {**cls.get_transcript_defaults(), **NEW_KEY_DEFAULTS}

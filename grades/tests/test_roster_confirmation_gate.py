@@ -16,6 +16,7 @@ from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
+from . import factories as f
 from .base import GradesTestCase as TestCase
 from django.urls import reverse
 
@@ -52,6 +53,7 @@ class RosterConfirmationGateTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(

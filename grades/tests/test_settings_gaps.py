@@ -32,7 +32,7 @@ from cis.models.teacher import Teacher
 from cis.models.term import AcademicYear, Term
 
 from ..services.email import resolve_recipients
-from ..settings.class_section_grades import class_section_grades
+from ..settings.class_section_grades import RETIRED_KEYS, class_section_grades
 
 User = get_user_model()
 GRADES_APP = 'grades.grades' if importlib.util.find_spec('grades.grades') else 'grades'
@@ -127,7 +127,9 @@ class EmailSwitchTest(_Fixture):
 
 class SettingsFormTest(_Fixture):
     def _form(self, **overrides):
-        data = {**legacy_value(self.term.id), 'grade_scale': '',
+        posted = {k: v for k, v in legacy_value(self.term.id).items()
+                  if k not in RETIRED_KEYS}
+        data = {**posted, 'grade_scale': '', 'grades_intro': '',
                 'is_active': 'Yes', 'debug_email_list': '',
                 'notify_instructor_on_submit': 'Yes', 'grades_submitted_cc': '',
                 'send_grade_reminders': 'Yes', 'student_grades_visible': 'Yes',
@@ -164,9 +166,10 @@ class SettingsFormTest(_Fixture):
         self.assertEqual(CronTab.objects.get(command='notify_grades_pending').cron, '5 5 * * *')
         self.assertEqual(Setting.objects.get(key=KEY).value['send_grade_reminders'], 'No')
 
-    def test_terms_choices_are_term_ids(self):
-        choices = dict(class_section_grades(HttpRequest()).fields['terms'].choices)
-        self.assertEqual(choices[str(self.term.id)], str(self.term))
+    def test_from_db_drops_retired_keys_of_a_legacy_row(self):
+        values = class_section_grades.from_db()
+        for key in ('terms', 'start_date', 'end_date', 'grades_open', 'grades_closed'):
+            self.assertNotIn(key, values)
 
     def test_from_db_fills_new_keys_only_when_absent(self):
         self._store(student_grades_visible='No')

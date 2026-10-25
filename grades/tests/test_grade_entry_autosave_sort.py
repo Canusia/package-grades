@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
 from django.test import SimpleTestCase
+from . import factories as f
 from .base import GradesTestCase as TestCase
 from django.urls import reverse
 
@@ -64,6 +65,7 @@ class GradeEntryAutosaveSortTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(

@@ -6,6 +6,7 @@ filter (IDOR). An instructor must only reach a section they teach
 (teacher__user == request.user); any other section must return 404 on both
 GET and POST.
 """
+from . import factories as f
 from .base import GradesTestCase as TestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model
@@ -49,6 +50,7 @@ class ClassSectionGradeIDORTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
 
         # The grade-detail GET render path instantiates the instructor_portal
@@ -145,6 +147,7 @@ class ClassSectionGradeCrossSectionWriteTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        cls.enterClassContext(f.keep_legacy_window())
         Group.objects.get_or_create(name='instructor')
         # Student.save() assigns the 'student' group; it must exist.
         Group.objects.get_or_create(name='student')

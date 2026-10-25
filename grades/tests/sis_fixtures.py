@@ -9,6 +9,7 @@ from cis.models.course import Cohort, Course
 from cis.models.highschool import HighSchool
 from cis.models.section import ClassSection, StudentRegistration
 from cis.models.settings import Setting
+from . import factories
 from cis.models.student import Student
 from cis.models.teacher import Teacher
 from cis.models.term import AcademicYear, Term
@@ -23,6 +24,7 @@ class SISFixtureMixin:
 
     @classmethod
     def setUpTestData(cls):
+        cls.enterClassContext(factories.keep_legacy_window())
         # The mixin precedes GradesTestCase in the MRO, so enter the campus here.
         cls._enter_test_campus()
         Group.objects.get_or_create(name='instructor')

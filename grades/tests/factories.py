@@ -92,3 +92,27 @@ def period(term_obj, name, opens_on, due_on, sequence=1, is_final=False, **kw):
 
 
 D = date  # short alias for tests
+
+
+def keep_legacy_window():
+    """Patcher: from_db() hands back the retired window keys a fixture stored.
+
+    v1.0.0 drops terms/start_date/end_date from from_db(), but
+    services.window still reads them until the grading-period rewrite
+    replaces it (Task 5). Tests that open the old window enter this via
+    ``cls.enterClassContext(f.keep_legacy_window())``; delete with Task 5.
+    """
+    from unittest.mock import patch
+    from cis.models.settings import Setting
+    from ..settings.class_section_grades import RETIRED_KEYS, class_section_grades
+
+    real = class_section_grades.from_db.__func__
+
+    def from_db(cls):
+        values = real(cls)
+        row = Setting.objects.filter(key=cls.key).first()
+        if row:
+            values.update({k: v for k, v in row.value.items() if k in RETIRED_KEYS})
+        return values
+
+    return patch.object(class_section_grades, 'from_db', classmethod(from_db))
