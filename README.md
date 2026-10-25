@@ -196,10 +196,15 @@ string from the host — do not rename them.
 ## Settings
 
 The `class_section_grades` configurator lives at `/ce/configurator/class_section_grades/`
-and controls the grade scale and GPA points, the submission window (`start_date` /
-`end_date`), reminder dates and cron, the eligible `registration_status` values, the
-grading `terms`, the grades-due / grades-submitted email templates and the unofficial
-transcript templates.
+and is global-only. It controls the grade scale and GPA points, the eligible
+`registration_status` values, the Grades Intro shown above the instructor Grades list,
+the grades-due / grades-submitted email templates and the unofficial transcript templates.
+
+The submission window, reminder cadence and student visibility are no longer settings.
+They are per-term Grading Periods (`opens_on`, `due_on`, remind-before-due,
+visible-to-students). The v0 fields `terms`, `start_date`, `end_date`, `reminder_dates`,
+`grades_open`, `grades_closed`, `viewable_from_date` and `viewable_end_date` are removed;
+migration `0005` turns the old window into a Final Grades period. See `CHANGELOG.md`.
 
 Switches added for the Grades Configuration Workbook (#2). A row saved before they
 existed behaves as if each were at its default, because `from_db()` fills them only
