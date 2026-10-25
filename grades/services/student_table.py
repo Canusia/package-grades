@@ -30,7 +30,26 @@ def _status(registration):
 
 
 def _grade(registration):
-    return registration.submitted_grade
+    """Visible, submitted interim marks, then the final grade once submitted."""
+    from django.utils.html import format_html
+    from django.utils.safestring import mark_safe
+    from .periods import get_status, periods_for_section
+    from .window import submitted_grade
+    from ..models import PeriodGrade
+    section = registration.class_section
+    lines = []
+    for period in periods_for_section(section):
+        if period.is_final:
+            grade = submitted_grade(registration)
+            if grade not in ('', '-'):
+                lines.append((period.name, grade))
+        elif period.visible_to_students and get_status(section, period) == 'submitted':
+            mark = PeriodGrade.objects.filter(period=period, registration=registration).first()
+            if mark and mark.grade:
+                lines.append((period.name, mark.grade))
+    if not lines:
+        return '-'
+    return mark_safe('<br>'.join(format_html('{}: {}', name, grade) for name, grade in lines))
 
 
 # key -> title, cell. Display order is this order.
@@ -39,7 +58,7 @@ COLUMNS = {
     'course': ('Course / Section No.', _course),
     'tuition': ('Tuition', _tuition),
     'status': ('Status', _status),
-    'grade': ('Submitted Grade', _grade),
+    'grade': ('Grades', _grade),
 }
 
 CHOICES = [(key, title) for key, (title, _) in COLUMNS.items()]

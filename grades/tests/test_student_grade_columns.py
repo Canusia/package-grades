@@ -140,7 +140,7 @@ class TemplateTests(_Base):
         self._store(student_grade_columns=['term', 'course', 'status', 'grade'])
         html = self._html()
         self.assertNotIn('Tuition', html)
-        self.assertIn('Submitted Grade', html)
+        self.assertIn('Grades', html)
 
     def test_view_passes_columns(self):
         self._store(student_grade_columns=['term', 'grade'])
