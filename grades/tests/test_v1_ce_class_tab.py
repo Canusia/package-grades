@@ -76,6 +76,11 @@ class CEClassTabTests(GradesTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Mid 1')
 
+    def test_edit_page_can_open_in_the_ce_iframe_modal(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        resp = self.client.get(url + f'?period={self.mid1.id}')
+        self.assertNotIn('X-Frame-Options', resp.headers)
+
     def _notes(self):
         return ClassSectionNote.objects.filter(
             class_section=self.section, note__icontains='on the instructor').count()

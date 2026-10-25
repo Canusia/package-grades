@@ -1,0 +1,20 @@
+{% comment %}CE Class Details Grades tab: each grading period's status and its Edit / Reopen actions (left of the grid's card header).{% endcomment %}
+{% if grid.periods %}
+<table class="table table-sm table-borderless mb-0">
+  <tbody>
+    {% for p in grid.periods %}
+    <tr>
+      <td class="pl-0 align-middle font-weight-bold text-nowrap">{{ p.period.name }}</td>
+      <td class="align-middle text-nowrap"><span class="badge badge-{% if p.status == 'submitted' %}success{% elif p.status == 'saved' %}info{% else %}secondary{% endif %}">{{ p.label|default:'Not started' }}</span></td>
+      <td class="align-middle small text-muted">{{ p.header }}{% if p.last_notified_on %} &middot; last notified {{ p.last_notified_on|date:'m/d/Y' }}{% endif %}</td>
+      <td class="align-middle text-nowrap">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'grades_ce:class_section_grade' record.id %}?period={{ p.period.id }}">Edit</a>
+        {% if p.status == 'submitted' %}
+        <form method="post" action="{% url 'grades_ce:reopen_period' record.id p.period.id %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-warning">Reopen</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
