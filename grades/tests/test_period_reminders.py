@@ -267,7 +267,7 @@ class PeriodReminderTests(TestCase):
             needs_reminder(
                 SectionPeriodStatus.objects.get(
                     period=period, class_section=section),
-                period.reminder_frequency_days,
+                period,
                 TODAY))
 
     # -- window ------------------------------------------------------------

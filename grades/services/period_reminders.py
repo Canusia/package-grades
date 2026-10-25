@@ -1,9 +1,7 @@
 """Recurring per-period grade reminders.
 
-This is the grading-period counterpart to ``services/reminders.py``. The old
-single-window reminder fires on an explicit list of dates configured on the
-``class_section_grades`` setting; it is untouched here and keeps driving the
-final-grade flow for tenants that define no grading periods.
+Grading-period reminders. The old date-list reminder (``services/reminders.py``)
+was retired in v1.0.0; this is the only reminder job.
 
 Cadence -- the roster-verification pattern, not the date-list pattern
 --------------------------------------------------------------------
@@ -12,8 +10,8 @@ exactly as ``ClassSection.needs_roster_verification_reminder``
 (``cis/models/section.py``) does it. Concretely, a section is reminded on a
 given day when **all** of the following hold:
 
-1. ``GradingPeriod.reminder_frequency_days > 0``. Zero disables reminders for
-   that period entirely -- it is the off switch, checked before anything else.
+1. The period has a reminder on: ``reminder_frequency_days > 0`` or
+   ``remind_days_before_due > 0``. Both zero disables reminders for the period.
 2. **The reminder window is open**: ``opens_on <= today <= due_on``, inclusive
    at both ends. This is the explicit rule keyed on the period's due date --
    the last reminder a section can receive is on the due date itself. Nothing
@@ -24,9 +22,10 @@ given day when **all** of the following hold:
 3. The section's ``SectionPeriodStatus.status`` is not ``submitted``. This is
    what makes the job self-terminating -- an instructor who has acted stops
    being nagged on the next run, with no separate bookkeeping.
-4. ``reminder_frequency_days`` have elapsed since
-   ``SectionPeriodStatus.last_notified_on``. A section that has never been
-   notified (``last_notified_on`` is ``NULL``) is always due.
+4. Either ``reminder_frequency_days`` have elapsed since
+   ``SectionPeriodStatus.last_notified_on`` (never notified is always due), or
+   today is exactly ``remind_days_before_due`` days before ``due_on``.
+5. The section was not already reminded today (``last_notified_on != today``).
 
 A section with no ``SectionPeriodStatus`` row at all has never submitted and
 has never been notified, so it must be reminded. Rather than treat a missing
@@ -56,35 +55,38 @@ from ..models import GradingPeriod, SectionPeriodStatus
 
 
 def periods_due_for_reminder(today=None):
-    """Grading periods whose reminder window is open on ``today``.
-
-    Rules 1 and 2 of the module docstring, as a queryset.
-    """
+    """Periods open on ``today`` with any reminder turned on."""
+    from django.db.models import Q
     today = today or datetime.date.today()
-
     return GradingPeriod.objects.filter(
-        reminder_frequency_days__gt=0,
-        opens_on__lte=today,
-        due_on__gte=today,
+        Q(reminder_frequency_days__gt=0) | Q(remind_days_before_due__gt=0),
+        opens_on__lte=today, due_on__gte=today,
     ).select_related('term').order_by('term', 'sequence')
 
 
-def needs_reminder(status_row, frequency_days, today=None):
-    """Is this (section, period) due for a reminder on ``today``?
+def needs_reminder(status_row, period, today=None):
+    """Is this (section, period) due a reminder on ``today``?
 
-    Rules 3 and 4. ``status_row`` may be freshly created and never notified.
+    Not submitted, not already reminded today, the period open, and either the
+    every-N-days cadence has elapsed or today is ``remind_days_before_due``
+    days before the due date.
     """
-    if frequency_days <= 0:
-        return False
-
+    today = today or datetime.date.today()
     if status_row.status == 'submitted':
         return False
-
+    if status_row.last_notified_on == today:
+        return False
+    if not (period.opens_on <= today <= period.due_on):
+        return False
+    before = period.remind_days_before_due
+    if before and today == period.due_on - datetime.timedelta(days=before):
+        return True
+    freq = period.reminder_frequency_days
+    if not freq:
+        return False
     if status_row.last_notified_on is None:
         return True
-
-    today = today or datetime.date.today()
-    return (today - status_row.last_notified_on).days >= frequency_days
+    return (today - status_row.last_notified_on).days >= freq
 
 
 def sections_pending_for_period(period, today=None):
@@ -113,7 +115,7 @@ def sections_pending_for_period(period, today=None):
         status_row, _ = SectionPeriodStatus.objects.get_or_create(
             period=period, class_section=section)
 
-        if needs_reminder(status_row, period.reminder_frequency_days, today):
+        if needs_reminder(status_row, period, today):
             pending.append((section, status_row))
 
     return pending
@@ -159,9 +161,7 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
     """Send every reminder due today.
 
     Returns ``(summary, detailed_log)``, or ``None`` when no email subject is
-    configured -- the same contract as
-    ``services.reminders.notify_sections_pending_grade``, so the management
-    command reports identically.
+    configured.
     """
     from ..settings.class_section_grades import class_section_grades
 
