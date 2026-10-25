@@ -13,7 +13,7 @@ Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.buil
     {% else %}
       {% if not grid.roster_gate_ok %}<div class="alert alert-warning">{{ grid.roster_gate_message|safe }}</div>{% endif %}
       {% if grid.message %}<div class="mb-3">{{ grid.message|safe }}</div>{% endif %}
-      <form method="post" action="{{ grid.post_url }}"{% if grid.editable_period %} data-autosave="1"{% endif %}>
+      <form method="post" action="{{ grid.post_url }}"{% if grid.editable_period and grid.autosave %} data-autosave="1"{% endif %}>
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ grid.next_url }}">
         {% if grid.editable_period %}
@@ -57,9 +57,14 @@ Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.buil
         </div>
         {% if grid.editable_period and grid.rows %}
         <div class="text-right">
-          <small class="autosave-summary text-muted mr-2" aria-live="polite">Grades save automatically as a draft.</small>
+          {% if grid.autosave %}<small class="autosave-summary text-muted mr-2" aria-live="polite">Grades save automatically as a draft.</small>{% endif %}
+          {% if grid.editable_submitted %}
+          <small class="text-muted mr-2">These grades are submitted; saving keeps them submitted.</small>
+          <input type="submit" name="save_grade" class="btn btn-primary btn-sm" value="Save {{ grid.editable_period.name }} Grades">
+          {% else %}
           <input type="submit" name="save_grade" class="btn btn-secondary btn-sm" value="Save Grades as 'Draft'">
           <input type="submit" name="save_grade" class="btn btn-primary btn-sm" value="Submit {{ grid.editable_period.name }} Grades">
+          {% endif %}
         </div>
         {% endif %}
       </form>

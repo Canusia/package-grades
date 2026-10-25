@@ -110,7 +110,7 @@ def _get_section_or_404(request, record_id):
 def ce_class_section_grade(request, record_id):
     """CE edits any period of a class on the instructor's behalf (spec 5)."""
     from ..services.grade_grid import build_grid
-    from ..services.periods import resolve_period
+    from ..services.periods import get_status, resolve_period
     from .grade_entry import handle_grade_post
     section = _get_section_or_404(request, record_id)
     if request.method == 'GET' and request.GET.get('action') == 'download_roster_pdf':
@@ -120,8 +120,15 @@ def ce_class_section_grade(request, record_id):
         raise Http404('Unknown grading period.')
     back = reverse('cis:section', args=[section.id]) + '#grades'
     if request.method == 'POST':
+        was_submitted = get_status(section, period) == 'submitted'
+
         def log(saved_period, draft):
-            verb = f'saved {saved_period.name} grades as draft' if draft else f'submitted {saved_period.name} grades'
+            if was_submitted:
+                verb = f'edited submitted {saved_period.name} grades'
+            elif draft:
+                verb = f'saved {saved_period.name} grades as draft'
+            else:
+                verb = f'submitted {saved_period.name} grades'
             section.add_note(createdby=request.user,
                              note=f"{request.user.email} {verb} on the instructor's behalf")
         return handle_grade_post(request, section, redirect_url=back,
@@ -129,7 +136,8 @@ def ce_class_section_grade(request, record_id):
     here = reverse('grades_ce:class_section_grade', args=[section.id]) + f'?period={period.id}'
     return render(request, 'grades/ce/class_section_grade.html', {
         'record': section, 'period': period,
-        'grid': build_grid(section, post_url=here, next_url=back, force_period=period),
+        'grid': build_grid(section, post_url=here, next_url=back, force_period=period,
+                           autosave=False),
     })
 
 

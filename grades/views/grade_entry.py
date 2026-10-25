@@ -81,12 +81,19 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
         _note(request, 'Please choose a grade for every student before submitting.', ok=False)
         return redirect(back)
 
+    # CE (force_period) edits a submitted period in place: it stays submitted.
+    # Reopening is the separate reopen action.
+    keep_submitted = force_period is not None and get_status(section, period) == 'submitted'
+    status = 'submitted' if keep_submitted or not draft else 'saved'
     formset.save()
-    set_status(section, period, 'saved' if draft else 'submitted')
-    if autosave:
-        return JsonResponse({'ok': True, 'status': 'saved'})
+    set_status(section, period, status)
     if on_saved is not None:
-        on_saved(period, draft)
-    _note(request, 'Your grades have been saved as a draft.' if draft
-          else f'Your {period.name} grades have been submitted.')
+        on_saved(period, status == 'saved')
+    if autosave:
+        return JsonResponse({'ok': True, 'status': status})
+    if keep_submitted:
+        _note(request, f'{period.name} grades updated; they remain submitted.')
+    else:
+        _note(request, 'Your grades have been saved as a draft.' if draft
+              else f'Your {period.name} grades have been submitted.')
     return redirect(back)

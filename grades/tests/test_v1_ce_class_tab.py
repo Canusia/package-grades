@@ -80,18 +80,66 @@ class CEClassTabTests(GradesTestCase):
         return ClassSectionNote.objects.filter(
             class_section=self.section, note__icontains='on the instructor').count()
 
-    def test_autosave_and_invalid_post_add_no_note(self):
-        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
-        base = {
+    def _base(self, grade='B'):
+        return {
             'period': str(self.mid1.id), 'next': '/',
             'form-TOTAL_FORMS': '1', 'form-INITIAL_FORMS': '1', 'form-MIN_NUM_FORMS': '1',
             'form-MAX_NUM_FORMS': '1', 'form-0-student': 'x',
-            'form-0-student_id': str(self.reg.id), 'form-0-grade': 'B'}
-        self.client.post(url + f'?period={self.mid1.id}', dict(base, save_grade="Save Grades as 'Draft'"),
+            'form-0-student_id': str(self.reg.id), 'form-0-grade': grade}
+
+    def test_invalid_post_adds_no_note(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        self.client.post(url + f'?period={self.mid1.id}', dict(self._base(''), save_grade='Submit'))
+        self.assertEqual(self._notes(), 0)
+
+    def test_xhr_draft_save_is_audited(self):
+        """Every CE write leaves a note, even an XHR draft save."""
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        resp = self.client.post(url + f'?period={self.mid1.id}',
+                                dict(self._base(), save_grade="Save Grades as 'Draft'"),
+                                HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._notes(), 1)
+
+    def test_edit_page_has_no_autosave(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        resp = self.client.get(url + f'?period={self.mid1.id}')
+        self.assertNotContains(resp, 'data-autosave')
+        self.assertNotContains(resp, 'save automatically')
+
+    def test_editing_submitted_period_keeps_it_submitted(self):
+        set_status(self.section, self.mid1, 'submitted')
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        resp = self.client.get(url + f'?period={self.mid1.id}')
+        self.assertContains(resp, 'Save Mid 1 Grades')
+        self.assertNotContains(resp, "Save Grades as &#x27;Draft&#x27;")
+        for label in ('Save Mid 1 Grades', "Save Grades as 'Draft'"):
+            self.client.post(url + f'?period={self.mid1.id}', dict(self._base('C'), save_grade=label))
+            self.assertEqual(SectionPeriodStatus.objects.get(period=self.mid1).status, 'submitted')
+        self.client.post(url + f'?period={self.mid1.id}', dict(self._base('D'), save_grade="Save Grades as 'Draft'"),
                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        self.assertEqual(self._notes(), 0)
-        self.client.post(url + f'?period={self.mid1.id}', dict(base, save_grade='Submit', **{'form-0-grade': ''}))
-        self.assertEqual(self._notes(), 0)
+        self.assertEqual(SectionPeriodStatus.objects.get(period=self.mid1).status, 'submitted')
+        self.assertEqual(PeriodGrade.objects.get(period=self.mid1).grade, 'D')
+        self.assertEqual(ClassSectionNote.objects.filter(
+            class_section=self.section, note__icontains='edited submitted Mid 1').count(), 3)
+
+    def test_editing_submitted_final_keeps_section_submitted(self):
+        today = date.today()
+        final = f.period(self.term, 'Final', today - timedelta(days=10), today - timedelta(days=5),
+                         sequence=2, is_final=True)
+        set_status(self.section, final, 'submitted')
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        self.client.post(url + f'?period={final.id}', dict(self._base('A'), period=str(final.id),
+                                                          save_grade="Save Grades as 'Draft'"))
+        self.section.refresh_from_db()
+        self.reg.refresh_from_db()
+        self.assertEqual(self.section.grade_status, 'submitted')
+        self.assertEqual(self.reg.grade, 'A')
+
+    def test_draft_of_unsubmitted_period_stays_saved(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        self.client.post(url + f'?period={self.mid1.id}', dict(self._base(), save_grade="Save Grades as 'Draft'"))
+        self.assertEqual(SectionPeriodStatus.objects.get(period=self.mid1).status, 'saved')
 
     def test_draft_and_submit_each_add_one_note(self):
         url = reverse('grades_ce:class_section_grade', args=[self.section.id])
