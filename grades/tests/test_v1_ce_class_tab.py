@@ -76,6 +76,40 @@ class CEClassTabTests(GradesTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Mid 1')
 
+    def _notes(self):
+        return ClassSectionNote.objects.filter(
+            class_section=self.section, note__icontains='on the instructor').count()
+
+    def test_autosave_and_invalid_post_add_no_note(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        base = {
+            'period': str(self.mid1.id), 'next': '/',
+            'form-TOTAL_FORMS': '1', 'form-INITIAL_FORMS': '1', 'form-MIN_NUM_FORMS': '1',
+            'form-MAX_NUM_FORMS': '1', 'form-0-student': 'x',
+            'form-0-student_id': str(self.reg.id), 'form-0-grade': 'B'}
+        self.client.post(url + f'?period={self.mid1.id}', dict(base, save_grade="Save Grades as 'Draft'"),
+                         HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(self._notes(), 0)
+        self.client.post(url + f'?period={self.mid1.id}', dict(base, save_grade='Submit', **{'form-0-grade': ''}))
+        self.assertEqual(self._notes(), 0)
+
+    def test_draft_and_submit_each_add_one_note(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        base = {
+            'period': str(self.mid1.id), 'next': '/',
+            'form-TOTAL_FORMS': '1', 'form-INITIAL_FORMS': '1', 'form-MIN_NUM_FORMS': '1',
+            'form-MAX_NUM_FORMS': '1', 'form-0-student': 'x',
+            'form-0-student_id': str(self.reg.id), 'form-0-grade': 'B'}
+        self.client.post(url + f'?period={self.mid1.id}', dict(base, save_grade="Save Grades as 'Draft'"))
+        self.assertEqual(self._notes(), 1)
+        self.client.post(url + f'?period={self.mid1.id}', dict(base, save_grade='Submit'))
+        self.assertEqual(self._notes(), 2)
+
+    def test_reopen_only_when_submitted(self):
+        self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
+        self.assertEqual(SectionPeriodStatus.objects.filter(period=self.mid1).count(), 0)
+        self.assertEqual(ClassSectionNote.objects.filter(class_section=self.section).count(), 0)
+
     def test_reopen(self):
         set_status(self.section, self.mid1, 'submitted')
         self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
@@ -86,3 +120,66 @@ class CEClassTabTests(GradesTestCase):
         resp = self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
         self.assertNotEqual(resp.status_code, 200)
         self.assertEqual(SectionPeriodStatus.objects.filter(period=self.mid1).count(), 0)
+
+
+class CECampusScopeTests(GradesTestCase):
+    @classmethod
+    def setUpClass(cls):
+        if _login_history_post_login is not None:
+            user_logged_in.disconnect(_login_history_post_login)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        if _login_history_post_login is not None:
+            user_logged_in.connect(_login_history_post_login)
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.conf import settings
+        from django.contrib.sites.models import Site
+        from cis.models import Campus
+        f.grades_setting()
+        if not getattr(settings, 'MULTI_CAMPUS', False):
+            return
+        site_b, _ = Site.objects.get_or_create(
+            domain='campus-b.example.com', defaults={'name': 'campus-b'})
+        prefix = getattr(settings, 'CAMPUS_CODE_PREFIX', 'TEST')
+        cls.campus_b, _ = Campus.objects.update_or_create(
+            code=f'{prefix}_B', defaults={'name': 'Campus B', 'site': site_b})
+        today = date.today()
+        cls.term = f.term()
+        cls.mid1 = f.period(cls.term, 'Mid 1', today - timedelta(days=30), today - timedelta(days=20))
+        cls.section = f.section(cls.term, f.teacher())
+        cls.section.campus = cls.campus_b
+        cls.section.save()
+        cls.reg = f.registration(cls.section)
+        set_status(cls.section, cls.mid1, 'submitted')
+        cls.ce = get_user_model().objects.create_user(
+            username='cea@example.com', email='cea@example.com', password='x', is_staff=True)
+        cls.ce.groups.add(Group.objects.get_or_create(name='ce')[0])
+        from cis.signals.staff_campus import add_process_campuses
+        add_process_campuses(cls.ce, [cls.campus])
+
+    def setUp(self):
+        from django.conf import settings
+        if not getattr(settings, 'MULTI_CAMPUS', False):
+            self.skipTest('multi-campus host only')
+        self.client.force_login(self.ce)
+
+    def test_other_campus_section_is_404_everywhere(self):
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        reopen = reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id])
+        self.assertEqual(self.client.get(url + f'?period={self.mid1.id}').status_code, 404)
+        self.assertEqual(self.client.get(url + '?action=download_roster_pdf').status_code, 404)
+        resp = self.client.post(url + f'?period={self.mid1.id}', {
+            'period': str(self.mid1.id), 'save_grade': 'Submit', 'next': '/',
+            'form-TOTAL_FORMS': '1', 'form-INITIAL_FORMS': '1', 'form-MIN_NUM_FORMS': '1',
+            'form-MAX_NUM_FORMS': '1', 'form-0-student': 'x',
+            'form-0-student_id': str(self.reg.id), 'form-0-grade': 'B'})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(self.client.post(reopen).status_code, 404)
+        self.assertFalse(PeriodGrade.objects.filter(period=self.mid1).exists())
+        self.assertEqual(SectionPeriodStatus.objects.get(period=self.mid1).status, 'submitted')
+        self.assertFalse(ClassSectionNote.objects.filter(class_section=self.section).exists())

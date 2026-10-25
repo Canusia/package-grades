@@ -37,7 +37,8 @@ def _note(request, text, ok=True):
                          'list-group-item-success' if ok else 'list-group-item-danger')
 
 
-def handle_grade_post(request, section, *, redirect_url, force_period=None, on_date=None):
+def handle_grade_post(request, section, *, redirect_url, force_period=None, on_date=None,
+                      on_saved=None):
     """Save (draft/autosave) or submit grades for one period of ``section``.
 
     The period comes from POST ``period``. Without ``force_period`` (CE) the
@@ -84,6 +85,8 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
     set_status(section, period, 'saved' if draft else 'submitted')
     if autosave:
         return JsonResponse({'ok': True, 'status': 'saved'})
+    if on_saved is not None:
+        on_saved(period, draft)
     _note(request, 'Your grades have been saved as a draft.' if draft
           else f'Your {period.name} grades have been submitted.')
     return redirect(back)
