@@ -58,6 +58,20 @@ _REPORTS_BASE = [
             'ce'
         ]
     },
+    {
+        'name': 'period_grades',
+        'title': 'Grades by Grading Period',
+        'description': 'One row per student registration with the grade for each selected grading period (mid-semester and final)',
+        'categories': ['Students', 'Classes'],
+        'available_for': ['ce'],
+    },
+    {
+        'name': 'period_submission_status',
+        'title': 'Grade Submission Status by Period',
+        'description': 'One row per class per grading period: submitted, draft or not started, with last reminder date',
+        'categories': ['Classes'],
+        'available_for': ['ce'],
+    },
 ]
 
 

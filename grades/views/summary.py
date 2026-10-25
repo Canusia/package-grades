@@ -15,6 +15,7 @@ from cis.models.term import Term
 
 from ..compat import picker_queryset
 from ..models import GradingPeriod
+from ..services.csv_safe import safe_cell
 from ..services.summary import remind, summarize
 from ..services.window import grade_terms, selected_term_ids
 
@@ -38,9 +39,7 @@ def _clean_highschools(values):
     return [h for h in values if h in allowed]
 
 
-def _safe_cell(value):
-    value = '' if value is None else str(value)
-    return "'" + value if value[:1] in ('=', '+', '-', '@', '\t', '\r') else value
+_safe_cell = safe_cell
 
 
 def summary(request):

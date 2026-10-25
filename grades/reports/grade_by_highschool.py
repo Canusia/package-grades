@@ -15,6 +15,8 @@ from cis.models.term import Term
 from cis.models.highschool import HighSchool
 from cis.models.section import StudentRegistration
 from ..compat import picker_queryset
+from ..models import GradingPeriod
+from ..services.report_marks import period_mark_annotation, selected_period
 from ..settings.class_section_grades import class_section_grades
 
 
@@ -40,6 +42,13 @@ class grade_by_highschool(forms.Form):
         help_text='Which registration statuses to include in analysis'
     )
 
+    grading_period = forms.ModelChoiceField(
+        queryset=GradingPeriod.objects.none(),
+        required=False,
+        label='Grading Period',
+        help_text='Blank = final grades',
+    )
+
     roles = []
     request = None
 
@@ -53,6 +62,8 @@ class grade_by_highschool(forms.Form):
         self.helper.add_input(Submit('submit', 'Generate Report'))
 
         self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        self.fields['grading_period'].queryset = GradingPeriod.objects.select_related(
+            'term').order_by('-term__code', 'sequence')
         self.fields['highschools'].queryset = picker_queryset()
 
         if self.request:
@@ -83,6 +94,10 @@ class grade_by_highschool(forms.Form):
                 class_section__highschool__id__in=highschool_ids
             )
 
+        # Grade source: the chosen period's marks, else the final grade
+        registrations = registrations.annotate(
+            period_mark=period_mark_annotation(selected_period(data)))
+
         # Aggregate by high school with grade counts
         aggregations = {
             'total': Count('id'),
@@ -92,13 +107,13 @@ class grade_by_highschool(forms.Form):
         for grade in grade_list:
             field_name = f'count_{grade.replace("+", "plus").replace("-", "minus").lower()}'
             aggregations[field_name] = Count(
-                Case(When(grade=grade, then=1), output_field=IntegerField())
+                Case(When(period_mark=grade, then=1), output_field=IntegerField())
             )
 
         # Also count W for withdrawals if not in grade list
         if 'W' not in grade_list:
             aggregations['count_w'] = Count(
-                Case(When(grade='W', then=1), output_field=IntegerField())
+                Case(When(period_mark='W', then=1), output_field=IntegerField())
             )
 
         grade_dist = registrations.values(
