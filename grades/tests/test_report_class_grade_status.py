@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 try:
     from django_login_history.models import post_login as _login_history_post_login

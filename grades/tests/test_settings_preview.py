@@ -7,7 +7,8 @@ import uuid
 from django.contrib.auth import get_user_model
 from django.contrib.messages.storage.cookie import CookieStorage
 from django.http import HttpRequest
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory
+from .base import GradesTestCase as TestCase
 
 from cis.models.settings import Setting
 from cis.models.term import AcademicYear, Term

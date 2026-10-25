@@ -2,7 +2,7 @@
 from unittest import mock
 
 from django.http import HttpRequest
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from cis.models.settings import Setting
 from ..settings.class_section_grades import class_section_grades

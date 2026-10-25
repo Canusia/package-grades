@@ -23,6 +23,8 @@ class SISFixtureMixin:
 
     @classmethod
     def setUpTestData(cls):
+        # The mixin precedes GradesTestCase in the MRO, so enter the campus here.
+        cls._enter_test_campus()
         Group.objects.get_or_create(name='instructor')
         Group.objects.get_or_create(name='student')
         ce_group, _ = Group.objects.get_or_create(name='ce')
@@ -48,6 +50,10 @@ class SISFixtureMixin:
         cls.ce_user = User.objects.create_user(
             username='sis_ce', email='sis_ce@example.com', password='x')
         cls.ce_user.groups.add(ce_group)
+        if getattr(cls, 'campus', None) is not None:
+            # CampusMiddleware refuses CE staff who don't process this campus.
+            from cis.signals.staff_campus import add_process_campuses
+            add_process_campuses(cls.ce_user, [cls.campus])
         cohort = Cohort.objects.create(name='Cohort SIS', designator='CS')
         cls.course = Course.objects.create(
             catalog_number='101', title='SIS Course', cohort=cohort, credit_hours=5)

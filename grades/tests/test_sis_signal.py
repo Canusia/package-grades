@@ -1,6 +1,6 @@
 """post_save flags needs_mirroring when a sent grade changes."""
 from django.db import connection
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 from django.test.utils import CaptureQueriesContext
 
 from ..models import GradeSISSync, GradeSISSyncAttempt

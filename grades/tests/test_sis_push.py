@@ -3,7 +3,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.db.models.query import QuerySet
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 from django.utils import timezone
 
 from cis.models.section import StudentRegistration

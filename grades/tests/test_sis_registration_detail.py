@@ -4,7 +4,8 @@ from datetime import datetime, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth.signals import user_logged_in
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory
+from .base import GradesTestCase as TestCase
 from django.utils import timezone
 
 try:
@@ -116,7 +117,7 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
 
     def test_history_tab_renders_local_time(self):
         reg = self.make_registration(self.make_section())
-        # 20:30 UTC on 30 Sep 2026 is 1:30 PM in America/Los_Angeles (PDT, UTC-7).
+        # Rendered in the host's own TIME_ZONE (not a hardcoded one).
         attempted_at = datetime(2026, 9, 30, 20, 30, tzinfo=dt_timezone.utc)
         sync = GradeSISSync.objects.create(
             registration=reg, status='sent', sent_grade='A',
@@ -131,5 +132,7 @@ class RegistrationDetailSISTests(SISFixtureMixin, TestCase):
         html = resp.content.decode()
 
         self.assertEqual(resp.status_code, 200)
-        self.assertIn('09/30/2026 1:30 PM', html)
+        local = timezone.localtime(attempted_at)
+        expected = f'09/30/2026 {local.hour % 12 or 12}:30 {local:%p}'
+        self.assertIn(expected, html)
         self.assertNotIn('8:30 PM', html)

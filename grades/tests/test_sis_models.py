@@ -3,7 +3,7 @@ import importlib
 
 from django.conf import settings
 from django.db import migrations
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from ..models import GradeSISSync, GradeSISSyncAttempt
 

@@ -6,7 +6,7 @@ filter (IDOR). An instructor must only reach a section they teach
 (teacher__user == request.user); any other section must return 404 on both
 GET and POST.
 """
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group

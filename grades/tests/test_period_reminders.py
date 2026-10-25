@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from mailer.models import Message
 

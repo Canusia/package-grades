@@ -7,7 +7,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from cis.models.highschool import HighSchool
 

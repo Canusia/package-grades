@@ -5,7 +5,7 @@ import os
 import uuid
 
 from django.http import HttpRequest
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from cis.models.settings import Setting
 from cis.models.term import AcademicYear, Term

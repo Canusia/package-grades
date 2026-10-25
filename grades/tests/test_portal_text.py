@@ -7,7 +7,7 @@ its copy.
 """
 from unittest import mock
 
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from cis.models.settings import Setting
 

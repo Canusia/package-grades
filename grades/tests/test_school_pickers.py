@@ -3,7 +3,8 @@ import unittest
 import uuid
 
 from django.conf import settings
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from .base import GradesTestCase as TestCase
 
 from ..compat import has_module
 

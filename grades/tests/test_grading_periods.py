@@ -11,7 +11,7 @@ import unittest
 from datetime import date
 
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 
 from cis.models.term import AcademicYear, Term
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth.signals import user_logged_in
-from django.test import TestCase
+from .base import GradesTestCase as TestCase
 from django.urls import reverse
 from django.conf import settings
 from django.utils import dateformat, timezone

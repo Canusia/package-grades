@@ -12,7 +12,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.signals import user_logged_in
 from django.http import Http404, HttpRequest
 from django.urls import Resolver404, resolve
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, override_settings
+from .base import GradesTestCase as TestCase
 
 from mailer.models import Message
 from rest_framework.authtoken.models import Token

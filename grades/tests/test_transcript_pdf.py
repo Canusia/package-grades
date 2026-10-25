@@ -5,7 +5,8 @@ import shutil
 from types import SimpleNamespace
 from unittest import mock, skipUnless
 
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory
+from .base import GradesTestCase as TestCase
 
 from ..services.transcript import render_transcript
 
