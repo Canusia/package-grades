@@ -27,14 +27,14 @@ def _periods():
 
 def grade_terms():
     """Ids (str) of every term with at least one grading period."""
-    return [str(t) for t in _periods().values_list('term_id', flat=True).distinct()]
+    return [str(t) for t in _periods().order_by().values_list('term_id', flat=True).distinct()]
 
 
 def current_grade_terms(on_date=None):
     """Grade terms with a period open or still to come on ``on_date``."""
     on_date = on_date or datetime.date.today()
     return [str(t) for t in _periods().filter(due_on__gte=on_date)
-            .values_list('term_id', flat=True).distinct()]
+            .order_by().values_list('term_id', flat=True).distinct()]
 
 
 def is_submit_grades_open(on_date=None):

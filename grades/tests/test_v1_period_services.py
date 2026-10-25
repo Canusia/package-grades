@@ -109,7 +109,7 @@ class SectionsGradesTabTests(GradesTestCase):
     def test_tab_renders_context_for_grade_terms(self):
         from ..tabs import sections_grades_tab
         ctx = sections_grades_tab(RequestFactory().get('/'), None)
-        self.assertIn(self.term, list(ctx['grade_terms']))
+        self.assertIn(self.term, list(ctx['terms']))
 
 
 class CampusScopedWindowTests(GradesTestCase):

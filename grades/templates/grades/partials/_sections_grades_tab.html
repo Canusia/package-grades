@@ -1,65 +1,45 @@
 <div class="bg-white border border-top-0 p-3">
-    <!-- Header with term info -->
-    <div class="mb-3">
-        <h5>Grade Statistics</h5>
-        <small class="text-muted">
-            Terms: {% for t in grade_terms %}{{ t.label }}{% if not forloop.last %}, {% endif %}{% empty %}No terms configured{% endfor %}
-        </small>
-    </div>
+    <form method="get" class="form-inline mb-3">
+        <label for="grades-term" class="mr-2"><strong>Term</strong></label>
+        <select id="grades-term" name="term" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
+            {% for t in terms %}
+            <option value="{{ t.id }}"{% if t.id|stringformat:"s" in selected_term_ids %} selected{% endif %}>{{ t.code }} {{ t.label }}</option>
+            {% endfor %}
+        </select>
+    </form>
 
-    <!-- Widget 1: Status Cards Row -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Submitted
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ grade_stats.submitted }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-check-circle fa-2x text-success"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                Draft
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ grade_stats.saved }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-save fa-2x text-warning"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-left-secondary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">
-                                Not Started
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ grade_stats.not_started }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-hourglass-start fa-2x text-secondary"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    {% url 'grades_ce:summary' as summary_url %}
+    <div class="table-responsive mb-4">
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Term</th>
+                    <th>Grading Period</th>
+                    <th class="text-right">Submitted</th>
+                    <th class="text-right">Draft</th>
+                    <th class="text-right">Not Started</th>
+                    <th class="text-right">Total</th>
+                    <th class="text-right">Complete %</th>
+                    {% if summary_url %}<th></th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in period_stats %}
+                <tr>
+                    <td>{{ s.period.term.code }}</td>
+                    <td>{{ s.period.name }}{% if s.period.is_final %} <span class="badge badge-primary">Final</span>{% endif %}</td>
+                    <td class="text-right">{{ s.submitted }}</td>
+                    <td class="text-right">{{ s.saved }}</td>
+                    <td class="text-right">{{ s.not_started }}</td>
+                    <td class="text-right">{{ s.total }}</td>
+                    <td class="text-right">{% if s.total %}{{ s.completion_pct }}%{% else %}N/A{% endif %}</td>
+                    {% if summary_url %}<td><a href="{{ summary_url }}?term={{ s.period.term_id }}&amp;period={{ s.period.id }}">View summary</a></td>{% endif %}
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-muted text-center">No grading periods for the selected term</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 
     <!-- Widget 2: Grade Distribution Table -->
@@ -99,36 +79,6 @@
                             </tfoot>
                             {% endif %}
                         </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Quick Stats</h6>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <span class="text-xs font-weight-bold text-uppercase">Total Sections (Grade Terms)</span>
-                        <div class="h4 mb-0 text-gray-800">{{ grade_stats.total }}</div>
-                    </div>
-                    <hr>
-                    <div class="mb-3">
-                        <span class="text-xs font-weight-bold text-uppercase">Completion Rate</span>
-                        <div class="h4 mb-0 text-gray-800">
-                            {% if grade_stats.total > 0 %}
-                                {{ grade_stats.completion_pct }}%
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </div>
-                        <div class="progress mt-2" style="height: 10px;">
-                            <div class="progress-bar bg-success" role="progressbar"
-                                 style="width: {{ grade_stats.completion_pct }}%"
-                                 aria-valuenow="{{ grade_stats.completion_pct }}"
-                                 aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
                     </div>
                 </div>
             </div>

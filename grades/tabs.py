@@ -27,60 +27,48 @@ hsadmin_class_section_tabs = (
           order=20, template='grades/partials/_sections_grades_tab.html',
           lazy=False)
 def sections_grades_tab(request, record):
-    """Grade statistics for the CE class-sections list page.
+    """Grade statistics for the CE class-sections list: one row per grading
+    period of the selected term(s).
 
-    `record` is always None — this registry backs a list page, not a detail
-    page. The context computed here was previously inlined in
-    ``cis.views.section.index()``; it lives with the template now so ``cis``
-    no longer needs to know grades exist.
+    `record` is always None -- this registry backs a list page, not a detail
+    page. Only terms from the campus-scoped ``grade_terms()`` are offered, so
+    the period query below never leaves the current campus.
     """
     from django.db.models import Count
 
     from cis.models.section import ClassSection, StudentRegistration
     from cis.models.term import Term
 
-    from .services.window import grade_terms
-    from .settings.class_section_grades import class_section_grades
+    from .models import GradingPeriod, SectionPeriodStatus
+    from .services.window import grade_terms, selected_term_ids
 
-    grade_settings = class_section_grades.from_db()
-    grade_term_ids = grade_terms()
-
-    submitted_count = ClassSection.objects.filter(
-        grade_status='submitted',
-        term__id__in=grade_term_ids
-    ).count()
-    saved_count = ClassSection.objects.filter(
-        grade_status='saved',
-        term__id__in=grade_term_ids
-    ).count()
-    not_started_count = ClassSection.objects.filter(
-        grade_status='',
-        term__id__in=grade_term_ids
-    ).count()
-    total_count = submitted_count + saved_count + not_started_count
-
-    grade_stats = {
-        'submitted': submitted_count,
-        'saved': saved_count,
-        'not_started': not_started_count,
-        'total': total_count,
-        'completion_pct': round((submitted_count / total_count * 100), 1) if total_count > 0 else 0,
-    }
-
+    available = grade_terms()
+    selected = selected_term_ids(request, available)
+    period_stats = []
+    for period in (GradingPeriod.objects.filter(term_id__in=selected)
+                   .select_related('term').order_by('term__code', 'sequence')):
+        total = ClassSection.objects.filter(term=period.term, status='A').count()
+        counts = dict(
+            SectionPeriodStatus.objects.filter(
+                period=period, class_section__status='A')
+            .values_list('status').annotate(n=Count('id')))
+        submitted, saved = counts.get('submitted', 0), counts.get('saved', 0)
+        period_stats.append({
+            'period': period, 'submitted': submitted, 'saved': saved,
+            'not_started': total - submitted - saved, 'total': total,
+            'completion_pct': round(submitted / total * 100, 1) if total else 0,
+        })
     grade_distribution = StudentRegistration.objects.filter(
-        class_section__term__id__in=grade_term_ids,
-        class_section__grade_status='submitted'
-    ).exclude(grade='-').exclude(grade='').values('grade').annotate(
-        count=Count('grade')
-    ).order_by('grade')
-
-    grade_total = sum(item['count'] for item in grade_distribution)
-
+        class_section__term_id__in=selected,
+        class_section__grade_status='submitted',
+    ).exclude(grade__in=['-', '']).values('grade').annotate(
+        count=Count('grade')).order_by('grade')
     return {
-        'grade_stats': grade_stats,
+        'terms': Term.objects.filter(pk__in=available).order_by('-code'),
+        'selected_term_ids': selected,
+        'period_stats': period_stats,
         'grade_distribution': list(grade_distribution),
-        'grade_total': grade_total,
-        'grade_terms': Term.objects.filter(pk__in=grade_term_ids),
+        'grade_total': sum(i['count'] for i in grade_distribution),
     }
 
 

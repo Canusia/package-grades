@@ -25,7 +25,7 @@ from ..models import GradeSISSync, GradeSISSyncAttempt
 from ..serializers import SISRegistrationSerializer, SISSectionSerializer
 from ..services import sis_push
 from ..services.roster import roster_statuses
-from ..services.window import grade_terms
+from ..services.window import grade_terms, selected_term_ids
 
 SYNC_STATUS_FILTERS = {'not_sent', GradeSISSync.QUEUED, GradeSISSync.SENT,
                        GradeSISSync.FAILED, GradeSISSync.NEEDS_MIRRORING}
@@ -242,6 +242,7 @@ def sis_sync_page(request):
         return render(request, 'grades/sis/index.html', context)
 
     sections = sections_base()
+    available_terms = grade_terms()
     context.update({
         'config_errors': sis_push.get_config_errors(),
         'sections_url': reverse('grades_ce:sis-sections-list') + '?format=datatables',
@@ -250,10 +251,11 @@ def sis_sync_page(request):
         'bulk_actions': grade_sis_actions.for_scope('bulk', request.user),
         'section_columns': SECTION_COLUMNS,
         'registration_columns': REGISTRATION_COLUMNS,
-        'terms': Term.objects.filter(pk__in=grade_terms()).order_by('code'),
+        'terms': Term.objects.filter(pk__in=available_terms).order_by('-code'),
+        'selected_term_ids': selected_term_ids(request, available_terms),
         'highschools': HighSchool.objects.filter(
             pk__in=sections.values('highschool_id')).order_by('name'),
-        'filter_sections': (ClassSection.objects.filter(term_id__in=grade_terms())
+        'filter_sections': (ClassSection.objects.filter(term_id__in=available_terms)
                             .select_related('course', 'term')
                             .order_by('term__code', 'course__title', 'section_number')),
     })

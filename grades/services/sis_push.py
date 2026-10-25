@@ -85,7 +85,7 @@ def _parse_ids(ids):
 def select_for_sections(section_ids):
     """Eligible registration ids for a class / bulk push.
 
-    Only sections in the configured grade terms are considered. Sections not in
+    Only sections in the grade terms (terms with grading periods) are considered. Sections not in
     grade_status 'submitted' are returned in `skipped` so the caller can say so.
     Within a section: roster registrations with a grade whose sync row is
     missing, failed, needs_mirroring, or a stale queued row.
