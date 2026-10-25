@@ -1,36 +1,44 @@
 {% extends "instructor/base_instructor.html" %}
-{% load static %}
-
 {% block title %}Grades{% endblock %}
-
 {% block page_header %}
-{{intro|safe}}
+{{ intro|default_if_none:''|safe }}
 {% include "instructor/partials/_breadcrumb.html" with page_name="Class Grades" %}
 {% endblock %}
-
 {% block content %}
-<!-- Configuration data for JavaScript -->
-<div id="grades-config"
-     data-classes-api="{{classes_api}}"
-     data-require-roster-confirmation="{% if require_roster_confirmation %}1{% endif %}"
-     style="display: none;"></div>
-
+{% if page_messages %}<div class="row">{% include 'cis/page_messages.html' %}</div>{% endif %}
 <div class="card">
-    <div class="card-body">
-        {{grades_intro|safe}}
-        <table id="records_classes" class="table table-striped responsive" style="width: 100%;">
-            <thead>
-                <tr>
-                    <th data-data="term.code" data-name="term.code">Term</th>
-                    <th data-data="course.title" data-name="course.title">Course</th>
-                    <th data-name="class_number" data-data="class_number">CRN</th>
-                    <th data-name="grade_status" data-data="grade_status">Grades Status</th>
-                    <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
-                </tr>
-            </thead>
-        </table>
-    </div>
+  <div class="card-body">
+    {{ grades_intro|default_if_none:''|safe }}
+    <form method="get" class="form-inline mb-3">
+      <label class="mr-2" for="id_term">Term</label>
+      <select id="id_term" name="term" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
+        {% for t in terms %}<option value="{{ t.id }}"{% if t.id|stringformat:'s' in selected_term_ids %} selected{% endif %}>{{ t.label }}</option>{% endfor %}
+      </select>
+    </form>
+    <table id="records_classes" class="table table-striped responsive" style="width:100%">
+      <thead><tr><th>Term</th><th>Course</th><th>CRN</th><th>High School</th><th>Students</th><th>Grades Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for row in rows %}{% with s=row.section %}
+        <tr>
+          <td>{{ s.term.label }}</td>
+          <td>{{ s.course.cohort.designator }} {{ s.course.catalog_number }}<br>{{ s.course.title }}</td>
+          <td>{{ s.class_number }}</td>
+          <td>{{ s.highschool|default:'' }}</td>
+          <td>{% for label, count in row.registrations %}<div class="text-nowrap">{{ label }}: <strong>{{ count }}</strong></div>{% empty %}<span class="text-muted">No students</span>{% endfor %}</td>
+          <td>
+            {% for p in row.periods %}
+            <div class="text-nowrap">{{ p.name }}{% if p.is_final %} <span class="badge badge-light">Final</span>{% endif %}{% if p.is_open %} <small class="text-success">(open)</small>{% endif %}:
+              {% if p.status == 'submitted' %}<span class="badge badge-success">{{ p.label }}</span>{% elif p.status == 'saved' %}<span class="badge badge-secondary">{{ p.label }}</span>{% else %}<span class="text-muted">{{ p.label }}</span>{% endif %}
+            </div>
+            {% endfor %}
+            {% if require_roster_confirmation and s.roster_status == 'pending verification' %}<span class="badge badge-warning">Roster not confirmed</span>{% endif %}
+          </td>
+          <td><a class="btn btn-sm btn-primary" href="{% url 'instructor:class_section_grade' s.id %}">Manage/Edit</a></td>
+        </tr>
+      {% endwith %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
-
-<script src="{% static 'grades/instructor/js/grades.js' %}"></script>
+<script>jQuery(function ($) { $('#records_classes').DataTable({ order: [[0,'asc'],[1,'asc']], lengthMenu: [30,50,100], columnDefs: [{ targets: -1, orderable: false, searchable: false }] }); });</script>
 {% endblock %}

@@ -5,38 +5,33 @@ from cis.menu import draw_menu, INSTRUCTOR_MENU
 from cis.models.term import Term
 from cis.models.section import ClassSection
 from cis.page_messages import get_page_messages
-from cis.utils import grades_page_header_for_instructor, is_submit_grades_open
 from ..compat import portal_text
-from ..services.window import grade_terms as grade_terms_service
+from ..services.window import grade_terms as grade_terms_service, selected_term_ids
+from ..services.class_list import class_rows
 from ..services.grade_grid import build_grid
 from ..settings.class_section_grades import class_section_grades
 from .grade_entry import handle_grade_post
 
 
 def class_grades(request):
-    menu = draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor')
-    grade_settings = class_section_grades.from_db()
-
-    grade_term_ids = grade_terms_service()
-    grade_terms = Term.objects.filter(pk__in=grade_term_ids)
-
-    # Build API URL with all grade-open term IDs
-    term_ids_str = ','.join(str(t.id) for t in grade_terms)
-    classes_api = f'/instructor/api/v1/class-section/?format=datatables&term={term_ids_str}'
-
-    return render(
-        request,
-        'grades/instructor/grades.html',
-        {
-            'menu': menu,
-            'intro': portal_text('instructor').get('grades_blurb', 'Change me'),
-            'page_header': grades_page_header_for_instructor(),
-            'is_open': is_submit_grades_open(),
-            'classes_api': classes_api,
-            'require_roster_confirmation': grade_settings.get(
-                'require_roster_confirmation', False),
-            'grades_intro': grade_settings.get('grades_intro', ''),
-        })
+    teacher_sections = ClassSection.objects.filter(
+        teacher__user=request.user, status='A', term_id__in=grade_terms_service())
+    available = list(teacher_sections.values_list('term_id', flat=True).distinct())
+    selected = selected_term_ids(request, available)
+    sections = teacher_sections.filter(term_id__in=selected).select_related(
+        'term', 'course__cohort', 'highschool').order_by(
+        'term__code', 'course__cohort__designator', 'course__catalog_number', 'class_number')
+    settings = class_section_grades.from_db()
+    return render(request, 'grades/instructor/grades.html', {
+        'menu': draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor'),
+        'intro': portal_text('instructor').get('grades_blurb', ''),
+        'grades_intro': settings.get('grades_intro', ''),
+        'page_messages': get_page_messages('instructor', 'grades', request),
+        'terms': Term.objects.filter(pk__in=available).order_by('-code'),
+        'selected_term_ids': selected,
+        'require_roster_confirmation': settings.get('require_roster_confirmation', False),
+        'rows': class_rows(sections),
+    })
 
 
 def class_section_grade(request, record_id):

@@ -205,17 +205,6 @@ class GradeEntryAutosaveSortTests(TestCase):
         self.assertContains(response, '<td>100</td>', html=False)
 
 
-class ClassGradesListStatusTests(SimpleTestCase):
-    """instructor/grades/ labels grade_status as Draft / Submitted."""
-
-    def test_list_labels_draft_and_submitted(self):
-        source = (Path(__file__).resolve().parent.parent
-                  / 'static/grades/instructor/js/grades.js').read_text()
-        self.assertIn("'saved': '<span class=\"badge badge-secondary\">Draft</span>'", source)
-        self.assertIn("'submitted': '<span class=\"badge badge-success\">Submitted</span>'", source)
-
-
-
 class SectionsGradesTabTests(SimpleTestCase):
     """The Grades tab on /ce/sections/ shows in the tab bar, not only via #grades."""
 
