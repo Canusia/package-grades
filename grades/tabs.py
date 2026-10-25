@@ -39,6 +39,7 @@ def sections_grades_tab(request, record):
     from cis.models.section import ClassSection, StudentRegistration
     from cis.models.term import Term
 
+    from .services.window import grade_terms
     from .settings.class_section_grades import class_section_grades
 
     grade_settings = class_section_grades.from_db()

@@ -7,25 +7,40 @@ order problems.
 import datetime
 
 
+def _periods():
+    """GradingPeriod queryset, scoped to the current campus on multi-campus hosts.
+
+    Single-campus hosts may have AcademicYears with no campus, so they stay
+    unscoped.
+    """
+    from ..compat import has_module
+    from ..models import GradingPeriod
+    qs = GradingPeriod.objects.all()
+    if has_module('cis.campus_context'):
+        from cis.campus_context import current_campus_or_none, is_multi_campus
+        if is_multi_campus():
+            campus = current_campus_or_none()
+            if campus is not None:
+                qs = qs.filter(term__academic_year__campus=campus)
+    return qs
+
+
 def grade_terms():
     """Ids (str) of every term with at least one grading period."""
-    from ..models import GradingPeriod
-    return [str(t) for t in GradingPeriod.objects.values_list('term_id', flat=True).distinct()]
+    return [str(t) for t in _periods().values_list('term_id', flat=True).distinct()]
 
 
 def current_grade_terms(on_date=None):
     """Grade terms with a period open or still to come on ``on_date``."""
-    from ..models import GradingPeriod
     on_date = on_date or datetime.date.today()
-    return [str(t) for t in GradingPeriod.objects.filter(due_on__gte=on_date)
+    return [str(t) for t in _periods().filter(due_on__gte=on_date)
             .values_list('term_id', flat=True).distinct()]
 
 
 def is_submit_grades_open(on_date=None):
     """Is any grading period open on ``on_date``? (No user: used by cis.)"""
-    from ..models import GradingPeriod
     on_date = on_date or datetime.date.today()
-    return GradingPeriod.objects.filter(opens_on__lte=on_date, due_on__gte=on_date).exists()
+    return _periods().filter(opens_on__lte=on_date, due_on__gte=on_date).exists()
 
 
 def can_view_grades():

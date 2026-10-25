@@ -97,3 +97,60 @@ class WindowServiceTests(GradesTestCase):
         P.set_status(section, P.periods_for_section(section)[0], 'submitted')
         reg.refresh_from_db()
         self.assertEqual(W.submitted_grade(reg), 'A')
+
+
+class SectionsGradesTabTests(GradesTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        f.grades_setting()
+        cls.term = f.term()
+        f.period(cls.term, 'Final', date(2020, 1, 1), date(2040, 1, 1), is_final=True)
+
+    def test_tab_renders_context_for_grade_terms(self):
+        from ..tabs import sections_grades_tab
+        ctx = sections_grades_tab(RequestFactory().get('/'), None)
+        self.assertIn(self.term, list(ctx['grade_terms']))
+
+
+class CampusScopedWindowTests(GradesTestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.conf import settings
+        from django.contrib.sites.models import Site
+        from cis.models import Campus
+        from cis.models.term import AcademicYear, Term
+        f.grades_setting()
+        site_b, _ = Site.objects.get_or_create(
+            domain='campus-b.example.com', defaults={'name': 'campus-b'})
+        prefix = getattr(settings, 'CAMPUS_CODE_PREFIX', 'TEST')
+        cls.campus_a = getattr(cls, 'campus', None)
+        if cls.campus_a is None:
+            cls.campus_a = Campus.objects.first()
+        cls.campus_b, _ = Campus.objects.update_or_create(
+            code=f'{prefix}_B', defaults={'name': 'Campus B', 'site': site_b})
+        ay_a = AcademicYear.objects.create(name='AY scoped A', campus=cls.campus_a)
+        ay_b = AcademicYear.objects.create(name='AY scoped B', campus=cls.campus_b)
+        cls.term_a = Term.objects.create(academic_year=ay_a, code='SA1', label='A')
+        cls.term_b = Term.objects.create(academic_year=ay_b, code='SB1', label='B')
+        f.period(cls.term_a, 'Final', date(2026, 5, 1), date(2026, 5, 9), is_final=True)
+        f.period(cls.term_b, 'Mid', date(2026, 10, 19), date(2026, 10, 30))
+
+    def setUp(self):
+        from django.conf import settings
+        if not getattr(settings, 'MULTI_CAMPUS', False):
+            self.skipTest('multi-campus host only')
+
+    def test_grade_terms_follow_current_campus(self):
+        from cis.campus_context import campus_context
+        with campus_context(self.campus_a):
+            self.assertEqual(W.grade_terms(), [str(self.term_a.id)])
+        with campus_context(self.campus_b):
+            self.assertEqual(W.grade_terms(), [str(self.term_b.id)])
+
+    def test_open_check_ignores_other_campus(self):
+        from cis.campus_context import campus_context
+        with campus_context(self.campus_a):
+            self.assertFalse(W.is_submit_grades_open(TODAY))
+            self.assertEqual(W.current_grade_terms(TODAY), [])
+        with campus_context(self.campus_b):
+            self.assertTrue(W.is_submit_grades_open(TODAY))
