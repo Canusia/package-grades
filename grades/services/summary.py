@@ -13,9 +13,14 @@ def _rank(statuses):
     return 'not_started'
 
 
-def summarize(period, highschool_ids=None, campus_ids=None):
+def summarize(period, highschool_ids=None, campus_ids=None, user=None):
+    """Per-instructor submission state for ``period``. With ``user``, only
+    sections whose course campus that CE user may process (same campus path
+    as the grade reports)."""
     from cis.models.section import ClassSection
+    from ..compat import scope_to_user_campuses
     sections = ClassSection.objects.filter(term_id=period.term_id, status='A', teacher__isnull=False)
+    sections = scope_to_user_campuses(sections, user, 'course__campus')
     if highschool_ids:
         sections = sections.filter(highschool_id__in=highschool_ids)
     if campus_ids:
@@ -55,16 +60,17 @@ def summarize(period, highschool_ids=None, campus_ids=None):
     return {'classes': classes, 'instructors': instructors, 'rows': rows}
 
 
-def remind(period, teacher_user_ids, today=None):
+def remind(period, teacher_user_ids, today=None, user=None):
     """Email each listed instructor with unsubmitted classes in ``period``,
-    skipping classes already reminded today. Returns emails sent."""
+    skipping classes already reminded today. With ``user``, only classes that
+    user's campus access covers. Returns emails sent."""
     from ..settings.class_section_grades import class_section_grades
     from .period_reminders import _send_period_reminder
     today = today or datetime.date.today()
     configs = class_section_grades.from_db()
     wanted = set(teacher_user_ids)
     sent = 0
-    for row in summarize(period)['rows']:
+    for row in summarize(period, user=user)['rows']:
         if row['teacher_user'].id not in wanted:
             continue
         pending = []

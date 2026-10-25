@@ -64,6 +64,16 @@ def scope_report_by_campus(records, user, selected_campus_ids, campus_path):
     return scope(records, user, selected_campus_ids, campus_path=campus_path)
 
 
+def scope_to_user_campuses(records, user, campus_path):
+    """``records`` narrowed to the campuses a ce ``user`` may process (records
+    with no campus stay). Superusers and non-ce roles are unchanged; without a
+    campus gate nothing is scoped."""
+    if not has_campus_gate() or user is None:
+        return records
+    from cis.campus_gate import scope_queryset_by_campus
+    return scope_queryset_by_campus(records, user, campus_path=campus_path)
+
+
 def apply_campus_field(form, user=None):
     """Fill a report form's ``campus`` field, or drop it without a campus gate."""
     if not has_campus_gate():

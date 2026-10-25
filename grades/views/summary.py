@@ -47,11 +47,11 @@ def summary(request):
     selected = selected_term_ids(request, available)
     periods, period = _period(request, selected)
     hs_ids = _clean_highschools(request.GET.getlist('highschool'))
-    data = summarize(period, highschool_ids=hs_ids) if period else None
+    data = summarize(period, highschool_ids=hs_ids, user=request.user) if period else None
 
     if period and request.GET.get('format') == 'csv':
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="grade_summary_{slugify(period.name) or 'period'}.csv"'
+        response['Content-Disposition'] = f'attachment; filename="grade_summary_{slugify(period.name) or "period"}.csv"'
         w = csv.writer(response)
         w.writerow(['Instructor', 'Email', 'High School(s)', 'Classes', 'Submitted', 'Draft',
                     'Not Started', 'Status', 'Last Reminder'])
@@ -81,8 +81,9 @@ def summary_remind(request):
     ids = [int(i) for i in request.POST.getlist('teacher') if i.isdigit()]
     hs_ids = _clean_highschools(request.POST.getlist('highschool'))
     if request.POST.get('all') == '1':
-        ids = [r['teacher_user'].id for r in summarize(period, highschool_ids=hs_ids)['rows'] if r['status'] != 'submitted']
-    sent = remind(period, ids)
+        ids = [r['teacher_user'].id for r in summarize(period, highschool_ids=hs_ids, user=request.user)['rows']
+               if r['status'] != 'submitted']
+    sent = remind(period, ids, user=request.user)
     messages.add_message(request, messages.SUCCESS, f'Sent {sent} reminder(s).', 'list-group-item-success')
     query = urlencode([('period', period.id), ('term', period.term_id)]
                       + [('highschool', h) for h in hs_ids])
