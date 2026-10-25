@@ -35,6 +35,8 @@ class GradingPeriodForm(forms.ModelForm):
             'due_on',
             'is_final',
             'reminder_frequency_days',
+            'remind_days_before_due',
+            'visible_to_students',
         ]
         labels = {
             'name': 'Name',
@@ -43,6 +45,8 @@ class GradingPeriodForm(forms.ModelForm):
             'due_on': 'Due On',
             'is_final': 'Final Grade Collection',
             'reminder_frequency_days': 'Reminder Frequency (days)',
+            'remind_days_before_due': 'Remind Days Before Due',
+            'visible_to_students': 'Visible to Students',
         }
         widgets = {
             'opens_on': forms.DateInput(
@@ -55,6 +59,8 @@ class GradingPeriodForm(forms.ModelForm):
         self.term = term
         super().__init__(*args, **kwargs)
         self.instance.term = term
+        # 0 (off) is the model default; an omitted field means off, not an error.
+        self.fields['remind_days_before_due'].required = False
 
     def _siblings(self):
         """Other periods in this term (excludes the record being edited)."""
@@ -75,6 +81,9 @@ class GradingPeriodForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
+        if cleaned_data.get('remind_days_before_due') is None:
+            cleaned_data['remind_days_before_due'] = 0
+
         opens_on = cleaned_data.get('opens_on')
         due_on = cleaned_data.get('due_on')
         if opens_on and due_on and due_on < opens_on:
@@ -82,6 +91,19 @@ class GradingPeriodForm(forms.ModelForm):
                 'due_on',
                 'The due date cannot be before the date the period opens.'
             )
+
+        if opens_on and due_on and due_on >= opens_on:
+            clash = GradingPeriod.overlapping(
+                self.term, opens_on, due_on,
+                exclude_pk=self.instance.pk if self.instance and self.instance.pk else None,
+            ).first()
+            if clash is not None:
+                self.add_error(
+                    'opens_on',
+                    f'These dates overlap "{clash.name}" '
+                    f'({clash.opens_on:%m/%d/%Y} - {clash.due_on:%m/%d/%Y}). '
+                    'Grading periods on a term cannot overlap.'
+                )
 
         if cleaned_data.get('is_final'):
             existing_final = self._siblings().filter(is_final=True).first()

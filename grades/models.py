@@ -67,6 +67,22 @@ class GradingPeriod(models.Model):
         ),
     )
 
+    remind_days_before_due = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            'Send one extra reminder this many days before the due date. '
+            '0 turns it off.'
+        ),
+    )
+
+    visible_to_students = models.BooleanField(
+        default=False,
+        help_text=(
+            "Students see this period's grades once their class has "
+            'submitted them.'
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -89,6 +105,18 @@ class GradingPeriod(models.Model):
 
     def __str__(self):
         return f'{self.term} - {self.name}'
+
+    @classmethod
+    def overlapping(cls, term, opens_on, due_on, exclude_pk=None):
+        """Periods on ``term`` whose [opens_on, due_on] range touches this one.
+
+        Inclusive at both ends: a period due 10/30 and one opening 10/30
+        overlap (both would be open that day).
+        """
+        qs = cls.objects.filter(term=term, opens_on__lte=due_on, due_on__gte=opens_on)
+        if exclude_pk is not None:
+            qs = qs.exclude(pk=exclude_pk)
+        return qs
 
 
 class PeriodGrade(models.Model):

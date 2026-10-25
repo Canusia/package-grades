@@ -35,6 +35,8 @@
                         <th>Due On</th>
                         <th>Final</th>
                         <th>Reminder</th>
+                        <th>Remind Before Due</th>
+                        <th>Students See</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -64,6 +66,14 @@
                             <span class="text-muted">Off</span>
                             {% endif %}
                         </td>
+                        <td>
+                            {% if period.remind_days_before_due %}
+                            {{ period.remind_days_before_due }} day{{ period.remind_days_before_due|pluralize }}
+                            {% else %}
+                            <span class="text-muted">Off</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ period.visible_to_students|yesno:"Yes,No" }}</td>
                         <td class="text-right">
                             <a href="#grading_periods" class="gp-manage mr-3" title="Edit"
                                data-url="{% url 'grades_ce:edit_grading_period' record.id period.id %}">Edit</a>
@@ -76,7 +86,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center text-muted p-4">
+                        <td colspan="9" class="text-center text-muted p-4">
                             No grading periods defined for this term. Grades continue to be
                             collected using the single submission window from
                             <em>Class Grades Settings</em> until a period is added here.
