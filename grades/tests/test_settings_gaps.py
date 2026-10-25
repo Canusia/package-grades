@@ -251,11 +251,13 @@ class ReminderSwitchTest(_Fixture):
             call_command(command, time='now')
         return done.send.call_args.kwargs['summary']
 
-    def test_both_commands_noop_when_off(self):
+    def test_period_command_noop_when_off(self):
         self._store(send_grade_reminders='No', reminder_dates='01/01/2026')
-        for command in ('notify_grades_pending', 'notify_period_grades_pending'):
-            with self.subTest(command):
-                self.assertEqual(self._run(command), 'Grade reminders are turned off')
+        self.assertEqual(self._run('notify_period_grades_pending'), 'Grade reminders are turned off')
+
+    def test_retired_command_reports_retired(self):
+        from ..services.reminders import RETIRED
+        self.assertEqual(self._run('notify_grades_pending'), RETIRED)
 
 
 class StudentSwitchTest(_Fixture):
