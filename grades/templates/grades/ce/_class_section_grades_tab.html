@@ -1,0 +1,16 @@
+{% load static %}
+<div class="mb-3">
+  {% for p in grid.periods %}
+  <div class="d-inline-block mr-3 mb-2">
+    <strong>{{ p.period.name }}</strong>
+    <span class="text-muted small">{{ p.label|default:'Not started' }}{% if p.last_notified_on %} &middot; last notified {{ p.last_notified_on|date:'m/d/Y' }}{% endif %}</span>
+    {% if p.header %}<div class="small text-muted">{{ p.header }}</div>{% endif %}
+    <a class="btn btn-sm btn-outline-primary" href="{% url 'grades_ce:class_section_grade' record.id %}?period={{ p.period.id }}">Edit</a>
+    {% if p.status == 'submitted' %}
+    <form method="post" action="{% url 'grades_ce:reopen_period' record.id p.period.id %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-warning">Reopen {{ p.period.name }}</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% include 'grades/partials/_grade_grid.html' %}
+<script src="{% static 'grades/js/grade_roster.js' %}"></script>

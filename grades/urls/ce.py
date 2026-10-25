@@ -14,7 +14,9 @@ from rest_framework.routers import SimpleRouter
 
 from cis.utils import user_has_cis_role
 
-from ..views.ce import delete_grading_period, manage_grading_period
+from ..views.ce import (
+    ce_class_section_grade, delete_grading_period, manage_grading_period,
+    reopen_period)
 from ..views.sis_sync import (
     SISRegistrationViewSet, SISSectionViewSet, sis_action, sis_sync_page)
 
@@ -40,6 +42,10 @@ urlpatterns = [
         ce_only(delete_grading_period),
         name='delete_grading_period'
     ),
+    path('class_section/<uuid:record_id>', ce_only(ce_class_section_grade),
+         name='class_section_grade'),
+    path('class_section/<uuid:record_id>/period/<uuid:period_id>/reopen',
+         ce_only(reopen_period), name='reopen_period'),
 ]
 
 # Grades → SIS page. The feeds gate themselves (CIS role + configured pusher);

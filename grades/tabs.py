@@ -16,6 +16,7 @@ class_section_index_tabs = registry(
 registration_tabs = registry(
     'myce.component_registry.registration', 'registration_tabs')
 term_tabs = registry('myce.component_registry.term', 'term_tabs')
+ce_class_section_tabs = registry('myce.component_registry.class_section', 'class_section_tabs')
 # The HS admin portal's class-section tabs, nested (editable) or flat layout.
 hsadmin_class_section_tabs = (
     registry('highschool_admin.highschool_admin.tabs.registry',
@@ -129,3 +130,19 @@ def hs_admin_grades_tab(request, record):
         record,
         post_url=reverse('grades_highschool_admin:class_section_grade', args=[record.id]),
         next_url=reverse('highschool_admin:class_section', args=[record.id]) + '#grades')}
+
+
+@register(ce_class_section_tabs, 'tab', slug='grades', title='Grades', order=35,
+          lazy=True, template='grades/ce/_class_section_grades_tab.html')
+def ce_class_section_grades_tab(request, record):
+    """Read-only grid for CE; ?edit=<period id> switches one period to edit."""
+    from django.urls import reverse
+    from .services.grade_grid import build_grid
+    from .services.periods import resolve_period
+    edit_id = request.GET.get('edit')
+    force = resolve_period(record, edit_id) if edit_id else None
+    post_url = reverse('grades_ce:class_section_grade', args=[record.id])
+    next_url = reverse('cis:section', args=[record.id]) + '#grades'
+    return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
+                               allow_edit=False, force_period=force),
+            'record': record}

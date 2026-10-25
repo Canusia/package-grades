@@ -9,8 +9,11 @@ in the URL, so a period is only reachable through its own term.
 Imports of other apps (``cis``) are absolute; intra-package imports are
 relative, because in editable mode this package is ``grades.grades``.
 """
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.contrib import messages
+from django.http import Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from cis.models.term import Term
 
@@ -90,3 +93,41 @@ def delete_grading_period(request, term_id, record_id):
         }
 
     return JsonResponse(data)
+
+
+def ce_class_section_grade(request, record_id):
+    """CE edits any period of a class on the instructor's behalf (spec 5)."""
+    from cis.models.section import ClassSection
+    from ..services.grade_grid import build_grid
+    from ..services.periods import resolve_period
+    from .grade_entry import handle_grade_post
+    section = get_object_or_404(ClassSection, pk=record_id)
+    if request.method == 'GET' and request.GET.get('action') == 'download_roster_pdf':
+        return section.download_roster_pdf()
+    period = resolve_period(section, request.GET.get('period') or request.POST.get('period'))
+    if period is None:
+        raise Http404('Unknown grading period.')
+    back = reverse('cis:section', args=[section.id]) + '#grades'
+    if request.method == 'POST':
+        response = handle_grade_post(request, section, redirect_url=back, force_period=period)
+        section.add_note(
+            createdby=request.user,
+            note=f"{request.user.email} edited {period.name} grades on the instructor's behalf")
+        return response
+    here = reverse('grades_ce:class_section_grade', args=[section.id]) + f'?period={period.id}'
+    return render(request, 'grades/ce/class_section_grade.html', {
+        'record': section, 'period': period,
+        'grid': build_grid(section, post_url=here, next_url=back, force_period=period),
+    })
+
+
+@require_POST
+def reopen_period(request, record_id, period_id):
+    from cis.models.section import ClassSection
+    from ..services.periods import set_status
+    section = get_object_or_404(ClassSection, pk=record_id)
+    period = get_object_or_404(GradingPeriod, pk=period_id, term_id=section.term_id)
+    set_status(section, period, 'saved')
+    section.add_note(createdby=request.user, note=f'{request.user.email} reopened {period.name} grades')
+    messages.add_message(request, messages.SUCCESS, f'{period.name} reopened.', 'list-group-item-success')
+    return redirect(reverse('cis:section', args=[section.id]) + '#grades')

@@ -1,0 +1,18 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}Edit {{ period.name }} Grades{% endblock %}
+{% load static %}
+{% block body %}
+<main>
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Home</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'cis:sections' %}">Sections</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'cis:section' record.id %}#grades">{{ record }}</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Edit {{ period.name }}</li>
+    </ol>
+  </nav>
+  {% include 'cis/messages.html' %}
+  {% include 'grades/partials/_grade_grid.html' %}
+</main>
+<script src="{% static 'grades/js/grade_roster.js' %}"></script>
+{% endblock %}
