@@ -33,8 +33,9 @@
     }
 
     function dataKey(key) {
-        // last_name -> lastName, matching element.dataset.
-        return key.replace(/_([a-z])/g, function (m, c) { return c.toUpperCase(); });
+        // last_name -> sortLastname, matching element.dataset for the row
+        // attribute data-sort-lastname (underscores removed by the template).
+        return 'sort' + key.replace(/_/g, '').replace(/^./, function (c) { return c.toUpperCase(); });
     }
 
     function compareRows(a, b, key) {
@@ -43,8 +44,8 @@
             b.dataset[prop] || '', undefined, { numeric: true, sensitivity: 'base' });
         if (primary !== 0) { return primary; }
         // Ties fall back to last name, then first name.
-        return (a.dataset.lastName || '').localeCompare(b.dataset.lastName || '', undefined, { sensitivity: 'base' })
-            || (a.dataset.firstName || '').localeCompare(b.dataset.firstName || '', undefined, { sensitivity: 'base' });
+        return (a.dataset.sortLastname || '').localeCompare(b.dataset.sortLastname || '', undefined, { sensitivity: 'base' })
+            || (a.dataset.sortFirstname || '').localeCompare(b.dataset.sortFirstname || '', undefined, { sensitivity: 'base' });
     }
 
     function applySort(table, sort) {
