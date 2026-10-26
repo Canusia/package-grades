@@ -9,15 +9,18 @@ from django.core.files.base import ContentFile
 
 from cis.backends.storage_backend import PrivateMediaStorage
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit
+from crispy_forms.layout import Layout, Submit
 
 from cis.models.term import Term
-from cis.models.course import Campus
 from cis.models.section import ClassSection
-from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
+from ..compat import (
+    apply_term_tree, current_campus_only, expand_term_ids, picker_queryset,
+    scope_to_user_campuses,
+)
 from ..models import GradingPeriod, SectionPeriodStatus
 from ..services.csv_safe import safe_cell
 from ..services.report_marks import periods_outside_terms_error
+from ._period_picker import PeriodSelectMultiple, follow_terms
 from .class_grade_status import STATUS_LABELS, last_changed, status_key
 
 COLUMNS = ['Term', 'Course', 'Grading Period', 'Final', 'Class No.', 'Section No.',
@@ -28,14 +31,13 @@ COLUMNS = ['Term', 'Course', 'Grading Period', 'Final', 'Class No.', 'Section No
 class period_submission_status(forms.Form):
     """Per class and grading period: submitted, draft or not started."""
 
-    campus = forms.ModelMultipleChoiceField(
-        queryset=Campus.objects.none(), required=True, label='Campus',
-    )
     term = forms.ModelMultipleChoiceField(
         queryset=None, label='Term(s)', help_text='Select one or more terms to include')
     periods = forms.ModelMultipleChoiceField(
         queryset=GradingPeriod.objects.none(), required=False, label='Grading Period(s)',
-        help_text='Leave blank to include every period of the selected terms')
+        widget=PeriodSelectMultiple,
+        help_text='Lists the periods of the selected term(s) and their sub-terms; '
+                  'leave blank to include every one')
     highschools = forms.ModelMultipleChoiceField(
         queryset=None, required=False, label='High School(s)',
         help_text='Leave blank to include all high schools')
@@ -51,11 +53,15 @@ class period_submission_status(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Report'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
-        self.fields['periods'].queryset = GradingPeriod.objects.select_related(
-            'term').order_by('-term__code', 'sequence')
+        # This campus's terms and periods only (both campuses have a "Fall 2026"
+        # with the same period names). A parent term includes its sub-terms.
+        terms = current_campus_only(Term.objects.order_by('-code'), 'academic_year__campus')
+        apply_term_tree(self.fields['term'], terms)
+        self.fields['periods'].queryset = current_campus_only(
+            GradingPeriod.objects.select_related('term').order_by('-term__code', 'sequence'),
+            'term__academic_year__campus')
         self.fields['highschools'].queryset = picker_queryset()
-        apply_campus_field(self, getattr(self.request, 'user', None))
+        self.helper.layout = Layout(*self.fields, follow_terms(terms))
 
         if self.request:
             self.helper.form_action = reverse_lazy(
@@ -69,14 +75,14 @@ class period_submission_status(forms.Form):
 
     def get_result(self, data, user=None):
         """[(section, period, SectionPeriodStatus or None)] for active sections x periods."""
-        term_ids = data.get('term') or []
+        term_ids = expand_term_ids(data.get('term') or [])
         sections = ClassSection.objects.select_related(
             'term', 'course', 'highschool', 'teacher__user'
         ).filter(term_id__in=term_ids, status='A')
         if data.get('highschools'):
             sections = sections.filter(highschool_id__in=data['highschools'])
-        sections = scope_report_by_campus(
-            sections, user, data.get('campus'), campus_path='course__campus')
+        # No campus filter: CE staff get the campuses they may process.
+        sections = scope_to_user_campuses(sections, user, campus_path='course__campus')
         sections = list(sections.order_by('term__code', 'course__name', 'class_number'))
 
         periods = GradingPeriod.objects.filter(term_id__in=term_ids)

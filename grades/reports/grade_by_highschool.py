@@ -14,7 +14,7 @@ from crispy_forms.layout import Submit
 from cis.models.term import Term
 from cis.models.highschool import HighSchool
 from cis.models.section import StudentRegistration
-from ..compat import picker_queryset
+from ..compat import current_campus_only, picker_queryset
 from ..models import GradingPeriod
 from ..services.report_marks import (
     period_mark_annotation, periods_outside_terms_error, selected_period,
@@ -63,9 +63,12 @@ class grade_by_highschool(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Report'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
-        self.fields['grading_period'].queryset = GradingPeriod.objects.select_related(
-            'term').order_by('-term__code', 'sequence')
+        # Only this campus's terms (and periods): CE staff work one campus per host.
+        self.fields['term'].queryset = current_campus_only(
+            Term.objects.order_by('-code'), 'academic_year__campus')
+        self.fields['grading_period'].queryset = current_campus_only(
+            GradingPeriod.objects.select_related('term').order_by('-term__code', 'sequence'),
+            'term__academic_year__campus')
         self.fields['highschools'].queryset = picker_queryset()
 
         if self.request:

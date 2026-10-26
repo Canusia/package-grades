@@ -63,7 +63,7 @@ _REPORTS_BASE = [
         'title': 'Grades by Grading Period',
         'description': 'One row per student registration with the grade for each selected grading period (mid-semester and final)',
         'categories': ['Students', 'Classes'],
-        'available_for': ['ce'],
+        'available_for': ['ce', 'highschool_admin'],
     },
     {
         'name': 'period_submission_status',

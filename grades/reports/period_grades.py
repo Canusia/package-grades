@@ -9,28 +9,30 @@ from django.core.files.base import ContentFile
 
 from cis.backends.storage_backend import PrivateMediaStorage
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit
+from crispy_forms.layout import Layout, Submit
 
 from cis.models.term import Term
-from cis.models.course import Campus
 from cis.models.section import StudentRegistration
-from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
+from ..compat import (
+    admin_active_highschools, apply_term_tree, current_campus_only, expand_term_ids,
+    is_ce_user, picker_queryset, restrict_to_admin_schools, scope_to_user_campuses,
+)
 from ..models import GradingPeriod, SectionPeriodStatus
 from ..services.csv_safe import safe_cell
 from ..services.report_marks import period_mark_annotation, periods_outside_terms_error
+from ._period_picker import PeriodSelectMultiple, follow_terms
 from .class_grade_status import GRADE_STATUS_CHOICES, NOT_STARTED, status_key
 
 
 class period_grades(forms.Form):
     """Student grades for each selected grading period (mid-semester and final)."""
 
-    campus = forms.ModelMultipleChoiceField(
-        queryset=Campus.objects.none(), required=True, label='Campus',
-    )
     term = forms.ModelMultipleChoiceField(
         queryset=None, label='Term(s)', help_text='Select one or more terms to include')
     periods = forms.ModelMultipleChoiceField(
-        queryset=GradingPeriod.objects.none(), required=True, label='Grading Period(s)')
+        queryset=GradingPeriod.objects.none(), required=True, label='Grading Period(s)',
+        widget=PeriodSelectMultiple,
+        help_text='Lists the periods of the selected term(s) and their sub-terms')
     highschools = forms.ModelMultipleChoiceField(
         queryset=None, required=False, label='High School(s)',
         help_text='Leave blank to include all high schools')
@@ -56,11 +58,23 @@ class period_grades(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Report'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
-        self.fields['periods'].queryset = GradingPeriod.objects.select_related(
-            'term').order_by('-term__code', 'sequence')
-        self.fields['highschools'].queryset = picker_queryset()
-        apply_campus_field(self, getattr(self.request, 'user', None))
+        user = getattr(self.request, 'user', None)
+        # This campus's terms and periods only: both campuses have a "Fall 2026"
+        # with the same period names, so a mixed pick is easy to make.
+        terms = current_campus_only(Term.objects.order_by('-code'), 'academic_year__campus')
+        # A parent term includes its sub-terms (table() expands the selection).
+        apply_term_tree(self.fields['term'], terms)
+        self.fields['periods'].queryset = current_campus_only(
+            GradingPeriod.objects.select_related('term').order_by('-term__code', 'sequence'),
+            'term__academic_year__campus')
+        if user is not None and not is_ce_user(user):
+            # A high school admin: only their Active schools (table() enforces
+            # the same schools when the report runs).
+            self.fields['highschools'].queryset = admin_active_highschools(user)
+            self.fields['highschools'].help_text = 'Leave blank to include all your high schools'
+        else:
+            self.fields['highschools'].queryset = picker_queryset()
+        self.helper.layout = Layout(*self.fields, follow_terms(terms))
 
         if self.request:
             self.helper.form_action = reverse_lazy(
@@ -97,7 +111,7 @@ class period_grades(forms.Form):
         periods = list(GradingPeriod.objects.filter(pk__in=data.get('periods') or [])
                        .order_by('sequence'))
         regs = StudentRegistration.objects.filter(
-            class_section__term_id__in=data.get('term') or []
+            class_section__term_id__in=expand_term_ids(data.get('term') or [])
         ).select_related('class_section__term', 'class_section__course',
                          'class_section__teacher__user', 'class_section__highschool',
                          'student__user')
@@ -105,8 +119,16 @@ class period_grades(forms.Form):
             regs = regs.filter(class_section__highschool_id__in=data['highschools'])
         if data.get('registration_status'):
             regs = regs.filter(status__in=data['registration_status'])
-        regs = scope_report_by_campus(regs, user, data.get('campus'),
-                                      campus_path='class_section__course__campus')
+        if user is not None and not is_ce_user(user):
+            # A high school admin only ever gets their own schools that are
+            # Active at the class's campus, whatever the (possibly replayed)
+            # selection says.
+            regs = restrict_to_admin_schools(
+                regs, user, 'class_section__highschool',
+                'class_section__term__academic_year__campus')
+        else:
+            # No campus filter: CE staff get the campuses they may process.
+            regs = scope_to_user_campuses(regs, user, campus_path='class_section__course__campus')
         if data.get('period_status'):
             regs = self._keep_by_period_status(regs, periods, set(data['period_status']))
         for i, p in enumerate(periods):

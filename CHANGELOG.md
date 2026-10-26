@@ -61,6 +61,15 @@ Term grading periods replace the single grade window.
 - Reports: grades by period, submission status by period, and a period filter
   on the grade distribution reports.
   A grading period outside the selected terms is rejected.
+- Report filters: on a multi-campus host every grades report lists and accepts
+  only the current campus's terms and grading periods. Grades by Grading
+  Period and Grade Submission Status by Period have no Campus field (CE staff
+  get the campuses they process), show terms as a parent/sub-term tree (a
+  parent includes its sub-terms), and their period list follows the selected
+  terms. Grades by Grading Period is also published to HS admins, who get only
+  their own schools that are Active at the class's campus. `register_reports`
+  does not update an existing report row: add `highschool_admin` to
+  `period_grades`' available-for by hand on an upgraded tenant.
 - Tenant hook `grades_columns` (`columns(builtin, default_keys)`) to choose and
   extend the grid's student columns.
 

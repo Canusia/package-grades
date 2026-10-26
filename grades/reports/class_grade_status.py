@@ -22,7 +22,9 @@ from crispy_forms.layout import Submit
 from cis.models.term import Term
 from cis.models.course import Campus
 from cis.models.section import ClassSection, StudentRegistration
-from ..compat import apply_campus_field, picker_queryset, scope_report_by_campus
+from ..compat import (
+    apply_campus_field, current_campus_only, picker_queryset, scope_report_by_campus,
+)
 from ..services.roster import roster_statuses
 
 
@@ -98,7 +100,9 @@ class class_grade_status(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Report'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        # Only this campus's terms (and periods): CE staff work one campus per host.
+        self.fields['term'].queryset = current_campus_only(
+            Term.objects.order_by('-code'), 'academic_year__campus')
         self.fields['highschools'].queryset = picker_queryset()
         apply_campus_field(self, getattr(self.request, 'user', None))
 

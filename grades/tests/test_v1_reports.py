@@ -178,17 +178,15 @@ class NewReportsCampusScopeTests(GradesTestCase):
         self.ce.groups.add(Group.objects.get_or_create(name='ce')[0])
         self.ce.set_process_campuses([str(self.campus_a.id)])
 
+    # No campus filter on these two: a ce user gets the campuses they process.
     def test_period_grades_scoped(self):
         _, rows = period_grades().table({
-            'term': [self.term.id], 'periods': [self.mid.id],
-            'campus': [self.campus_a.id, self.campus_b.id]}, user=self.ce)
+            'term': [self.term.id], 'periods': [self.mid.id]}, user=self.ce)
         self.assertEqual([r[7] for r in rows], ['A'])
 
     def test_submission_status_scoped(self):
         report = period_submission_status()
-        result = report.get_result({
-            'term': [self.term.id],
-            'campus': [self.campus_a.id, self.campus_b.id]}, user=self.ce)
+        result = report.get_result({'term': [self.term.id]}, user=self.ce)
         self.assertEqual({s.id for s, _, _ in result}, {self.regs['a'][0].id})
 
 
@@ -239,3 +237,151 @@ class PeriodTermCheckTests(GradesTestCase):
         rows = run_report(m_pg, period_grades(), task, {
             'term': [self.t1.id], 'periods': [self.p1.id], 'campus': []})
         self.assertEqual(rows[0][-1], "'=cmd()")
+
+
+class PeriodGradesTermsAndHSAdminTests(GradesTestCase):
+    """Grades by Grading Period: parent terms include sub-terms, the period list
+    follows the terms, no campus filter, and HS admins get only their Active
+    schools."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from cis.models.highschool_administrator import (
+            HSAdministrator, HSAdministratorPosition, HSPosition,
+        )
+        f.grades_setting()
+        cls.parent = f.term()
+        cls.child = f.term(ay=cls.parent.academic_year, parent=cls.parent)
+        cls.other = f.term()
+        cls.p_child = f.period(cls.child, 'Mid Child', date(2026, 10, 1), date(2026, 10, 9), 1)
+        cls.p_other = f.period(cls.other, 'Mid Other', date(2026, 10, 1), date(2026, 10, 9), 1)
+        cls.own, cls.closed, cls.foreign = f.highschool('Own HS'), f.highschool('Closed HS'), \
+            f.highschool('Foreign HS')
+        # Inactive here: per-campus status on a multi-campus host (its link to
+        # this campus), the school's own status otherwise.
+        from cis.models.highschool import HighSchoolCampus
+        if HighSchoolCampus.objects.filter(highschool=cls.closed).exists():
+            HighSchoolCampus.objects.filter(highschool=cls.closed).update(status='Inactive')
+        else:
+            cls.closed.status = 'Inactive'
+            cls.closed.save()
+        for hs, name in ((cls.own, 'Own'), (cls.closed, 'Closed'), (cls.foreign, 'Foreign')):
+            sec = f.section(cls.child, f.teacher(), highschool_obj=hs)
+            save_mark(cls.p_child, f.registration(sec, last_name=name), 'B')
+        User = get_user_model()
+        cls.hs_user = User.objects.create_user(
+            username='pg_hs', email='pg_hs@x.com', password='x')
+        cls.hs_user.groups.add(Group.objects.get_or_create(name='highschool_admin')[0])
+        hsadmin = HSAdministrator.objects.create(user=cls.hs_user)
+        position = HSPosition.objects.create(name='Counselor')
+        for hs in (cls.own, cls.closed):
+            HSAdministratorPosition.objects.create(
+                hsadmin=hsadmin, highschool=hs, position=position, status='Active')
+        HSAdministratorPosition.objects.create(
+            hsadmin=hsadmin, highschool=cls.foreign, position=position, status='Inactive')
+
+    def _form(self, user=None, data=None):
+        request = SimpleNamespace(user=user, GET={}) if user else None
+        return period_grades(request, data=data)
+
+    def _names(self, data, user=None):
+        _, rows = period_grades().table(data, user=user)
+        return sorted(r[7] for r in rows)
+
+    def test_no_campus_field(self):
+        self.assertNotIn('campus', self._form().fields)
+
+    def test_parent_term_includes_sub_term_registrations_and_periods(self):
+        data = {'term': [str(self.parent.id)], 'periods': [str(self.p_child.id)]}
+        form = self._form(data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(self._names({'term': [self.parent.id], 'periods': [self.p_child.id]}),
+                         ['Closed', 'Foreign', 'Own'])
+        self.assertIn('selected term', self._form(data={
+            'term': [str(self.parent.id)], 'periods': [str(self.p_other.id)]}).errors['periods'][0])
+
+    def test_period_options_carry_their_term_and_follow_the_term_field(self):
+        html = self._form().fields['periods'].widget.render(
+            'periods', [], {'id': 'id_periods'})
+        self.assertIn(f'data-term="{self.child.id}"', html)
+        script = self._form().helper.layout.fields[-1].html
+        self.assertIn('select[name="term"]', script)
+        self.assertIn(str(self.child.id), script)
+
+    def test_hs_admin_picker_lists_only_active_schools_with_an_active_role(self):
+        names = [hs.name for hs in self._form(self.hs_user).fields['highschools'].queryset]
+        self.assertEqual(names, ['Own HS'])
+
+    def test_hs_admin_rows_are_their_active_schools_whatever_is_selected(self):
+        data = {'term': [self.parent.id], 'periods': [self.p_child.id],
+                'highschools': [self.own.id, self.closed.id, self.foreign.id]}
+        self.assertEqual(self._names(data, user=self.hs_user), ['Own'])
+        self.assertEqual(self._names({**data, 'highschools': []}, user=self.hs_user), ['Own'])
+
+
+class SubmissionStatusFilterTests(GradesTestCase):
+    """Grade Submission Status by Period: no campus field, parent terms include
+    sub-terms, and the period list follows the terms."""
+
+    @classmethod
+    def setUpTestData(cls):
+        f.grades_setting()
+        cls.parent = f.term()
+        cls.child = f.term(ay=cls.parent.academic_year, parent=cls.parent)
+        cls.p_child = f.period(cls.child, 'Mid Child', date(2026, 10, 1), date(2026, 10, 9), 1)
+        cls.sec = f.section(cls.child, f.teacher())
+
+    def test_no_campus_field_and_periods_follow_terms(self):
+        form = period_submission_status()
+        self.assertNotIn('campus', form.fields)
+        html = form.fields['periods'].widget.render('periods', [], {'id': 'id_periods'})
+        self.assertIn(f'data-term="{self.child.id}"', html)
+        self.assertIn('select[name="term"]', form.helper.layout.fields[-1].html)
+
+    def test_parent_term_includes_sub_term_sections_and_periods(self):
+        result = period_submission_status().get_result({'term': [self.parent.id]})
+        self.assertEqual([(s.id, p.id) for s, p, _ in result], [(self.sec.id, self.p_child.id)])
+        form = period_submission_status(data={
+            'term': [str(self.parent.id)], 'periods': [str(self.p_child.id)]})
+        self.assertTrue(form.is_valid(), form.errors)
+
+
+@unittest.skipUnless(getattr(settings, 'MULTI_CAMPUS', False), 'single-campus host')
+class ReportTermsFollowTheCampusTests(GradesTestCase):
+    """On a multi-campus host every grades report lists, and accepts, only the
+    current campus's terms and grading periods."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from cis.models.course import Campus
+        from cis.models.term import AcademicYear
+        f.grades_setting()
+        pfx = settings.CAMPUS_CODE_PREFIX
+        cls.campus_b = Campus.objects.create(name='Other', code=f'{pfx}-OTHER')
+        cls.here = f.term()
+        cls.there = f.term(ay=AcademicYear.objects.create(name='AY other', campus=cls.campus_b))
+        cls.p_here = f.period(cls.here, 'Mid', date(2026, 10, 1), date(2026, 10, 9), 1)
+        cls.p_there = f.period(cls.there, 'Mid', date(2026, 10, 1), date(2026, 10, 9), 1)
+
+    def _reports(self):
+        from ..reports.class_grade_status import class_grade_status
+        return (class_grade_status, grade_by_course, grade_by_demographics,
+                grade_by_highschool, period_grades, period_submission_status)
+
+    def test_term_and_period_lists_are_this_campus_only(self):
+        for report_cls in self._reports():
+            with self.subTest(report=report_cls.__name__):
+                form = report_cls()
+                terms = set(form.fields['term'].queryset)
+                self.assertIn(self.here, terms)
+                self.assertNotIn(self.there, terms)
+                field = form.fields.get('periods') or form.fields.get('grading_period')
+                if field is not None:
+                    self.assertNotIn(self.p_there, set(field.queryset))
+
+    def test_another_campus_term_is_rejected(self):
+        for report_cls in self._reports():
+            with self.subTest(report=report_cls.__name__):
+                form = report_cls(data={'term': [str(self.there.id)]})
+                form.is_valid()
+                self.assertIn('term', form.errors)
