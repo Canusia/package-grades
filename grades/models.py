@@ -21,6 +21,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from simple_history.models import HistoricalRecords
 
 
 class GradingPeriod(models.Model):
@@ -149,6 +150,9 @@ class PeriodGrade(models.Model):
         related_name='+',
     )
     entered_at = models.DateTimeField(auto_now=True)
+    # Every change to an interim mark, who made it and when (final grades
+    # get theirs from StudentRegistration's own history).
+    history = HistoricalRecords()
 
     class Meta:
         constraints = [

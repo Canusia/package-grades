@@ -29,6 +29,9 @@ Term grading periods replace the single grade window.
   or submitted under 0.0.x gets a status row for its term's Final Grades
   period, so it stays submitted (not editable, final grade visible to
   students). Idempotent; reverse is a no-op.
+- `0008` adds change history for interim (mid-semester) marks
+  (`HistoricalPeriodGrade`, django-simple-history; now a declared dependency).
+  Final grades already have history on `StudentRegistration`.
 
 ### Added
 
@@ -38,8 +41,13 @@ Term grading periods replace the single grade window.
   tab, the standalone grade page and the HS admin grid, with per-period
   submit and a term switcher on the Grades list.
 - Grades tab on instructor and CE Class Details (CE: edit on behalf, reopen).
-  The CE edit page has no auto-save; every CE save adds a class note, and
-  saving a submitted period keeps it submitted (use Reopen to un-submit).
+  The CE edit page has no auto-save; every CE save adds a class note that
+  lists each changed grade (`Last, First: old → new`), and saving a submitted
+  period keeps it submitted (use Reopen to un-submit).
+- Download Grades (CSV: student columns plus a column per period) on the
+  instructor grade page and Grades tab, and the CE Grades tab and edit page.
+  The instructor grade page uses the Class Details layout with only the
+  Grades and Notes tabs.
 - HS admin grade entry on the shared grid.
 - Open-period page messages for instructors and HS admins.
 - Per-period student grade visibility.

@@ -13,6 +13,7 @@ from django.contrib import messages
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.html import escape
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_POST
 
@@ -21,6 +22,7 @@ from cis.models.term import Term
 from ..compat import has_module
 from ..forms.grading_period import GradingPeriodForm
 from ..models import GradingPeriod
+from ..services.grade_csv import grades_csv_response
 
 
 def _get_period(term, record_id):
@@ -108,6 +110,27 @@ def _get_section_or_404(request, record_id):
     return section
 
 
+def _marks(section, period):
+    """{registration: mark} for the class's roster, read fresh from the db."""
+    from ..services.periods import grades_for
+    from ..services.roster import students_for_grades
+    registrations = list(students_for_grades(section).select_related('student__user'))
+    marks = grades_for(section, period, registrations)
+    return {reg: marks.get(reg.id) or '' for reg in registrations}
+
+
+def _changes(before, after):
+    """'Last, First: old → new' (HTML-escaped) for every mark that changed."""
+    old = {reg.id: mark for reg, mark in before.items()}
+    lines = []
+    for reg, mark in after.items():
+        if old.get(reg.id, '') != mark:
+            user = reg.student.user
+            lines.append(escape(f'{user.last_name}, {user.first_name}: '
+                                f'{old.get(reg.id) or "(blank)"} → {mark or "(blank)"}'))
+    return sorted(lines)
+
+
 # The CE section page opens in cis's #details iframe modal, so its Grades tab
 # links land inside that frame: allow same-origin framing only.
 @xframe_options_sameorigin
@@ -119,28 +142,37 @@ def ce_class_section_grade(request, record_id):
     section = _get_section_or_404(request, record_id)
     if request.method == 'GET' and request.GET.get('action') == 'download_roster_pdf':
         return section.download_roster_pdf()
+    if request.method == 'GET' and request.GET.get('action') == 'download_grades':
+        return grades_csv_response(section)
     period = resolve_period(section, request.GET.get('period') or request.POST.get('period'))
     if period is None:
         raise Http404('Unknown grading period.')
     back = reverse('cis:section', args=[section.id]) + '#grades'
     if request.method == 'POST':
         was_submitted = get_status(section, period) == 'submitted'
+        before = _marks(section, period)
 
         def log(saved_period, draft):
             if was_submitted:
-                verb = f'edited submitted {saved_period.name} grades'
+                verb = f'edited submitted {escape(saved_period.name)} grades'
             elif draft:
-                verb = f'saved {saved_period.name} grades as draft'
+                verb = f'saved {escape(saved_period.name)} grades as draft'
             else:
-                verb = f'submitted {saved_period.name} grades'
-            section.add_note(createdby=request.user,
-                             note=f"{request.user.email} {verb} on the instructor's behalf")
+                verb = f'submitted {escape(saved_period.name)} grades'
+            note = f"{escape(request.user.email)} {verb} on the instructor's behalf"
+            changes = _changes(before, _marks(section, saved_period))
+            if changes:
+                note += ':<br>' + '<br>'.join(changes)
+            section.add_note(createdby=request.user, note=note)
         return handle_grade_post(request, section, redirect_url=back,
                                  force_period=period, on_saved=log)
-    here = reverse('grades_ce:class_section_grade', args=[section.id]) + f'?period={period.id}'
+    # The grid form posts the period as a hidden field, so the post URL (also
+    # the Download Roster link's base) carries no query string.
+    base = reverse('grades_ce:class_section_grade', args=[section.id])
     return render(request, 'grades/ce/class_section_grade.html', {
         'record': section, 'period': period,
-        'grid': build_grid(section, post_url=here, next_url=back, force_period=period,
+        'grades_download_url': base + '?action=download_grades',
+        'grid': build_grid(section, post_url=base, next_url=back, force_period=period,
                            autosave=False),
     })
 

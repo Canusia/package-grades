@@ -173,6 +173,60 @@ class CEClassTabTests(GradesTestCase):
         resp = self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
         self.assertNotEqual(resp.status_code, 200)
         self.assertEqual(SectionPeriodStatus.objects.filter(period=self.mid1).count(), 0)
+    def _post_grade(self, grade, final=None):
+        period = final or self.mid1
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        return self.client.post(url, {
+            'period': str(period.id), 'save_grade': 'Submit', 'next': '/',
+            'form-TOTAL_FORMS': '1', 'form-INITIAL_FORMS': '1', 'form-MIN_NUM_FORMS': '1',
+            'form-MAX_NUM_FORMS': '1', 'form-0-student': 'x',
+            'form-0-student_id': str(self.reg.id), 'form-0-grade': grade})
+
+    def test_note_lists_each_changed_grade(self):
+        user = self.reg.student.user
+        self._post_grade('B')
+        self._post_grade('A')
+        notes = list(ClassSectionNote.objects.filter(
+            class_section=self.section).order_by('createdon').values_list('note', flat=True))
+        self.assertIn(f'{user.last_name}, {user.first_name}: (blank) → B', notes[0])
+        self.assertIn(f'{user.last_name}, {user.first_name}: B → A', notes[-1])
+
+    def test_note_on_final_grade_edit_lists_the_change(self):
+        final = f.period(self.term, 'Final Grades', self.mid1.opens_on, self.mid1.due_on,
+                         is_final=True, sequence=9)
+        self._post_grade('C', final=final)
+        self.reg.refresh_from_db()
+        self.assertEqual(self.reg.grade, 'C')
+        note = ClassSectionNote.objects.filter(class_section=self.section).latest('createdon').note
+        self.assertIn('Final Grades', note)
+        self.assertIn(f'{self.reg.student.user.last_name}, {self.reg.student.user.first_name}: - → C', note)
+
+    def test_mid_semester_grades_keep_change_history(self):
+        self._post_grade('B')
+        self._post_grade('A')
+        mark = PeriodGrade.objects.get(period=self.mid1, registration=self.reg)
+        self.assertEqual([h.grade for h in mark.history.order_by('history_date')], ['B', 'A'])
+        self.assertEqual(mark.history.latest().history_user, self.ce)
+
+    def test_download_grades_csv(self):
+        self._post_grade('B')
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        resp = self.client.get(url + '?action=download_grades')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'text/csv')
+        lines = resp.content.decode().splitlines()
+        self.assertTrue(lines[0].endswith('Mid 1'))
+        self.assertTrue(lines[1].endswith('B'))
+
+    def test_tab_and_edit_page_show_download_grades(self):
+        from ..tabs import ce_class_section_grades_tab
+        request = RequestFactory().get('/')
+        request.user = self.ce
+        self.assertTrue(ce_class_section_grades_tab(request, self.section)['grades_download_url']
+                        .endswith('?action=download_grades'))
+        url = reverse('grades_ce:class_section_grade', args=[self.section.id])
+        self.assertContains(self.client.get(url + f'?period={self.mid1.id}'), 'Download Grades')
+
 
 
 class CECampusScopeTests(GradesTestCase):
@@ -236,3 +290,4 @@ class CECampusScopeTests(GradesTestCase):
         self.assertFalse(PeriodGrade.objects.filter(period=self.mid1).exists())
         self.assertEqual(SectionPeriodStatus.objects.get(period=self.mid1).status, 'submitted')
         self.assertFalse(ClassSectionNote.objects.filter(class_section=self.section).exists())
+

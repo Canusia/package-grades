@@ -146,4 +146,5 @@ def ce_class_section_grades_tab(request, record):
     next_url = reverse('cis:section', args=[record.id]) + '#grades'
     return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
                                allow_edit=False, force_period=force, autosave=False),
+            'grades_download_url': post_url + '?action=download_grades',
             'record': record}
