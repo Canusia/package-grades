@@ -35,6 +35,7 @@ from cis.settings.highschool_admin_portal import (
 )
 
 from ..services.gating import hs_admin_can_view_grades, hs_admin_grade_entry_enabled
+from ..services.grade_csv import grades_csv_response
 from ..services.grade_grid import build_grid
 from .grade_entry import handle_grade_post
 
@@ -85,6 +86,8 @@ def class_section_grade(request, record_id):
     tab = reverse('highschool_admin:class_section', args=[section.id]) + '#grades'
     if request.GET.get('action') == 'download_roster_pdf':
         return section.download_roster_pdf()
+    if request.GET.get('action') == 'download_grades':
+        return grades_csv_response(section)
     if request.method == 'POST':
         if not can_edit:
             raise Http404('High school admin grade entry is not enabled.')
@@ -92,5 +95,6 @@ def class_section_grade(request, record_id):
     return render(request, 'grades/hs_admin/class_section_grade.html', {
         'menu': menu, 'class_section': section,
         'intro': portal_lang(request).from_db().get('class_blurb', ''),
+        'grades_download_url': here + '?action=download_grades',
         'grid': build_grid(section, post_url=here, next_url=here, allow_edit=can_edit),
     })

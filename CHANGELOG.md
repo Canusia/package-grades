@@ -45,7 +45,8 @@ Term grading periods replace the single grade window.
   lists each changed grade (`Last, First: old → new`), and saving a submitted
   period keeps it submitted (use Reopen to un-submit).
 - Download Grades (CSV: student columns plus a column per period) on the
-  instructor grade page and Grades tab, and the CE Grades tab and edit page.
+  instructor grade page and Grades tab, the CE Grades tab and edit page, and
+  the HS admin Grades tab and grade page (view access is enough).
   The instructor grade page uses the Class Details layout with only the
   Grades and Notes tabs.
 - HS admin grades on the shared grid. The Class Grades setting "High School

@@ -452,6 +452,35 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertContains(self._page(section), 'name="period"')
 
 
+    def test_view_can_download_grades_csv(self):
+        self._set('view')
+        section, _ = self._section()
+        self._period()
+        response = self.client.get(self._url(section) + '?action=download_grades')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv')
+        self.assertTrue(response.content.decode().splitlines()[0].endswith('Midterm'))
+
+    def test_off_download_grades_is_not_found(self):
+        self._set('No')
+        section, _ = self._section()
+        self.assertEqual(
+            self.client.get(self._url(section) + '?action=download_grades').status_code, 404)
+
+    def test_download_grades_other_school_is_not_found(self):
+        self._set('view')
+        section, _ = self._section(highschool=self.hs_other)
+        self.assertEqual(
+            self.client.get(self._url(section) + '?action=download_grades').status_code, 404)
+
+    @_needs_tab_registry
+    def test_tab_shows_download_grades(self):
+        self._set('view')
+        section, _ = self._section()
+        self._period()
+        self.assertContains(self._page(section), '?action=download_grades')
+
+
 # Run only the setting tests on the subclass, not the inherited entry tests.
 for _name in [n for n in vars(HSAdminPeriodGradeEntryTests) if n.startswith('test_')]:
     setattr(HSAdminGradeEntrySettingTests, _name, None)
