@@ -1,6 +1,8 @@
 """v1: period reports (spec §5)."""
 import csv
 import io
+import json
+import re
 import unittest
 from datetime import date
 from types import SimpleNamespace
@@ -21,7 +23,7 @@ from ..reports import period_submission_status as m_pss
 from ..reports.grade_by_course import grade_by_course
 from ..reports.grade_by_demographics import grade_by_demographics
 from ..reports.grade_by_highschool import grade_by_highschool
-from ..reports.period_grades import period_grades
+from ..reports.period_grades import HS_ACCESS_OFF, period_grades
 from ..reports.period_submission_status import period_submission_status
 from ..services.csv_safe import safe_cell
 from ..services.periods import save_mark, set_status
@@ -304,13 +306,45 @@ class PeriodGradesTermsAndHSAdminTests(GradesTestCase):
         html = self._form().fields['periods'].widget.render(
             'periods', [], {'id': 'id_periods'})
         self.assertIn(f'data-term="{self.child.id}"', html)
-        script = self._form().helper.layout.fields[-1].html
-        self.assertIn('select[name="term"]', script)
-        self.assertIn(str(self.child.id), script)
+        from crispy_forms.utils import render_crispy_form
+        page = render_crispy_form(self._form())
+        form_body = page[page.index('<form'):page.index('</form>')]
+        # The data rides in a json_script block inside the form; the script
+        # finds both selects from that form, listens through jQuery (the
+        # multiple-select plugin's change is jQuery-only) and refreshes the plugin.
+        data = re.search(r'<script id="(grades-period-picker-\w+)" type="application/json">'
+                         r'(.*?)</script>', form_body)
+        self.assertIsNotNone(data)
+        cfg = json.loads(data.group(2))
+        self.assertEqual((cfg['term'], cfg['periods']), ('term', 'periods'))
+        self.assertIn(str(self.child.id), cfg['groups'][str(self.parent.id)])
+        self.assertIn(f'getElementById("{data.group(1)}")', form_body)
+        for needle in (".closest('form')", "$(terms).on('change', sync)", 'o.disabled = !ok',
+                       "multipleSelect('refresh')", 'setTimeout(sync, 0)'):
+            self.assertIn(needle, form_body)
 
     def test_hs_admin_picker_lists_only_active_schools_with_an_active_role(self):
         names = [hs.name for hs in self._form(self.hs_user).fields['highschools'].queryset]
         self.assertEqual(names, ['Own HS'])
+
+    def test_hs_admin_cannot_run_it_when_grade_access_is_off(self):
+        data = {'term': [str(self.parent.id)], 'periods': [str(self.p_child.id)]}
+        form = self._form(self.hs_user, data=data)  # setting has no access: none
+        self.assertFalse(form.is_valid())
+        self.assertIn(HS_ACCESS_OFF, form.non_field_errors())
+        unbound = self._form(self.hs_user)
+        self.assertEqual(unbound.helper.inputs, [])
+        self.assertIn(HS_ACCESS_OFF, unbound.helper.layout.fields[0].html)
+        # CE users are not affected.
+        self.assertTrue(self._form(data=data).is_valid())
+
+    def test_hs_admin_can_run_it_with_view_or_edit_access(self):
+        data = {'term': [str(self.parent.id)], 'periods': [str(self.p_child.id)]}
+        for access in ('view', 'edit'):
+            f.grades_setting(hs_admin_grade_entry=access)
+            form = self._form(self.hs_user, data=data)
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertTrue(form.helper.inputs)
 
     def test_hs_admin_rows_are_their_active_schools_whatever_is_selected(self):
         data = {'term': [self.parent.id], 'periods': [self.p_child.id],
@@ -336,7 +370,7 @@ class SubmissionStatusFilterTests(GradesTestCase):
         self.assertNotIn('campus', form.fields)
         html = form.fields['periods'].widget.render('periods', [], {'id': 'id_periods'})
         self.assertIn(f'data-term="{self.child.id}"', html)
-        self.assertIn('select[name="term"]', form.helper.layout.fields[-1].html)
+        self.assertIn('"term": "term"', form.helper.layout.fields[-1].html)
 
     def test_parent_term_includes_sub_term_sections_and_periods(self):
         result = period_submission_status().get_result({'term': [self.parent.id]})

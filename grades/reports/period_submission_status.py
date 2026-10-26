@@ -36,7 +36,7 @@ class period_submission_status(forms.Form):
     periods = forms.ModelMultipleChoiceField(
         queryset=GradingPeriod.objects.none(), required=False, label='Grading Period(s)',
         widget=PeriodSelectMultiple,
-        help_text='Lists the periods of the selected term(s) and their sub-terms; '
+        help_text='Only periods of the selected term(s) and their sub-terms can be picked; '
                   'leave blank to include every one')
     highschools = forms.ModelMultipleChoiceField(
         queryset=None, required=False, label='High School(s)',
