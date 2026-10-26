@@ -79,7 +79,7 @@ class CEClassTabTests(GradesTestCase):
     def test_edit_page_can_open_in_the_ce_iframe_modal(self):
         url = reverse('grades_ce:class_section_grade', args=[self.section.id])
         resp = self.client.get(url + f'?period={self.mid1.id}')
-        self.assertNotIn('X-Frame-Options', resp.headers)
+        self.assertEqual(resp.headers['X-Frame-Options'], 'SAMEORIGIN')
 
     def _notes(self):
         return ClassSectionNote.objects.filter(

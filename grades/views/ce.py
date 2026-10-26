@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_POST
 
 from cis.models.term import Term
@@ -109,8 +109,8 @@ def _get_section_or_404(request, record_id):
 
 
 # The CE section page opens in cis's #details iframe modal, so its Grades tab
-# links land inside that frame (same as cis's own modal-opened pages).
-@xframe_options_exempt
+# links land inside that frame: allow same-origin framing only.
+@xframe_options_sameorigin
 def ce_class_section_grade(request, record_id):
     """CE edits any period of a class on the instructor's behalf (spec 5)."""
     from ..services.grade_grid import build_grid
@@ -145,7 +145,7 @@ def ce_class_section_grade(request, record_id):
     })
 
 
-@xframe_options_exempt
+@xframe_options_sameorigin
 @require_POST
 def reopen_period(request, record_id, period_id):
     from ..services.periods import get_status, set_status
