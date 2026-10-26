@@ -48,7 +48,10 @@ Term grading periods replace the single grade window.
   instructor grade page and Grades tab, and the CE Grades tab and edit page.
   The instructor grade page uses the Class Details layout with only the
   Grades and Notes tabs.
-- HS admin grade entry on the shared grid.
+- HS admin grades on the shared grid. The Class Grades setting "High School
+  Admin Grade Access" (key `hs_admin_grade_entry`) is now No access / View
+  grades only / View and enter grades; stored Yes maps to edit, No to none.
+  View shows a read-only Grades tab; only edit accepts a save.
 - Open-period page messages for instructors and HS admins.
 - Per-period student grade visibility.
 - CE grade submission summary page with reminders and CSV.

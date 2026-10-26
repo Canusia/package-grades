@@ -21,6 +21,21 @@ from ..services import student_table
 
 YES_NO = [('Yes', 'Yes'), ('No', 'No')]
 
+# What high school admins may do with grades on their class sections. Stored
+# under the old key hs_admin_grade_entry, which held Yes/No before (Yes = edit).
+HS_ADMIN_GRADE_ACCESS = [
+    ('none', 'No access'),
+    ('view', 'View grades only'),
+    ('edit', 'View and enter grades'),
+]
+_LEGACY_HS_ADMIN_GRADE_ACCESS = {'Yes': 'edit', 'No': 'none'}
+
+
+def hs_admin_grade_access_value(value):
+    """'none', 'view' or 'edit' for a stored hs_admin_grade_entry value."""
+    value = _LEGACY_HS_ADMIN_GRADE_ACCESS.get(value, value)
+    return value if value in dict(HS_ADMIN_GRADE_ACCESS) else 'none'
+
 # Keys added for the Grades Configuration Workbook (#2). from_db() fills these
 # only when absent, so a row saved before they existed keeps behaving as it did.
 NEW_KEY_DEFAULTS = {
@@ -31,7 +46,7 @@ NEW_KEY_DEFAULTS = {
     'send_grade_reminders': 'Yes',
     'student_grades_visible': 'Yes',
     'student_transcript_enabled': 'Yes',
-    'hs_admin_grade_entry': 'No',
+    'hs_admin_grade_entry': 'none',
     'student_grade_columns': student_table.DEFAULT,
     'grades_intro': '',
 }
@@ -213,10 +228,11 @@ class SettingForm(forms.Form):
     )
 
     hs_admin_grade_entry = forms.ChoiceField(
-        choices=YES_NO,
-        label='Let High School Admins Enter Grades',
-        help_text='When Yes, high school admins get a Grades tab on their class '
-                  'section page and can enter grades for sections at their schools.',
+        choices=HS_ADMIN_GRADE_ACCESS,
+        label='High School Admin Grade Access',
+        help_text='View: high school admins get a read-only Grades tab on their class '
+                  'section page. View and enter: they can also enter and submit grades '
+                  'for sections at their schools.',
     )
 
     transcript_template_header = forms.CharField(
@@ -683,6 +699,8 @@ class class_section_grades(SettingForm):
             # Absent only: '' and 'No' are real choices for these (#2).
             for key, default_value in NEW_KEY_DEFAULTS.items():
                 values.setdefault(key, default_value)
+            values['hs_admin_grade_entry'] = hs_admin_grade_access_value(
+                values.get('hs_admin_grade_entry'))
             for key in RETIRED_KEYS:
                 values.pop(key, None)
             return values

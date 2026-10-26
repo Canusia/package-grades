@@ -46,8 +46,22 @@ def can_enter_grades(section):
     return False, message
 
 
-def hs_admin_grade_entry_enabled():
-    """True when CE lets high school admins enter grades (default No, #3)."""
-    from ..settings.class_section_grades import class_section_grades
+def hs_admin_grade_access():
+    """What CE lets high school admins do with grades: 'none' (default),
+    'view' or 'edit' (#3; the setting was Yes/No, Yes = edit)."""
+    from ..settings.class_section_grades import (
+        class_section_grades, hs_admin_grade_access_value,
+    )
 
-    return class_section_grades.from_db().get('hs_admin_grade_entry') == 'Yes'
+    return hs_admin_grade_access_value(
+        class_section_grades.from_db().get('hs_admin_grade_entry'))
+
+
+def hs_admin_can_view_grades():
+    """True when high school admins may see the Grades tab (view or edit)."""
+    return hs_admin_grade_access() in ('view', 'edit')
+
+
+def hs_admin_grade_entry_enabled():
+    """True when high school admins may also enter and submit grades."""
+    return hs_admin_grade_access() == 'edit'

@@ -30,7 +30,7 @@ class GradeScaleSettingTests(TestCase):
                 'is_active': 'Yes', 'debug_email_list': '',
                 'notify_instructor_on_submit': 'Yes', 'grades_submitted_cc': '',
                 'send_grade_reminders': 'Yes', 'student_grades_visible': 'Yes',
-                'student_transcript_enabled': 'Yes', 'hs_admin_grade_entry': 'No',
+                'student_transcript_enabled': 'Yes', 'hs_admin_grade_entry': 'none',
                 'student_grade_columns': ['term', 'course', 'tuition', 'status', 'grade'],
                 **overrides}
         return class_section_grades(HttpRequest(), data)

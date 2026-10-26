@@ -112,25 +112,27 @@ def grade_sis_tab(request, record):
     return {'sync': sync, 'attempts': attempts, 'registration': record}
 
 
-def _hs_admin_may_enter_grades(user, record):
+def _hs_admin_may_see_grades(user, record):
     # The class-section view has already 404'd a section outside the admin's
-    # schools; this only applies CE's on/off switch (#3).
-    from .services.gating import hs_admin_grade_entry_enabled
-    return hs_admin_grade_entry_enabled()
+    # schools; this only applies CE's access setting (#3): view or edit.
+    from .services.gating import hs_admin_can_view_grades
+    return hs_admin_can_view_grades()
 
 
 @register(hsadmin_class_section_tabs, 'tab', slug='grades', title='Grades',
           order=25, template='grades/hs_admin/_class_section_grades_tab.html',
-          lazy=False, permission=_hs_admin_may_enter_grades)
+          lazy=False, permission=_hs_admin_may_see_grades)
 def hs_admin_grades_tab(request, record):
     """The shared grade grid, inline. `record` is the ClassSection."""
     from django.urls import reverse
+    from .services.gating import hs_admin_grade_entry_enabled
     from .services.grade_grid import build_grid
 
     return {'grid': build_grid(
         record,
         post_url=reverse('grades_highschool_admin:class_section_grade', args=[record.id]),
-        next_url=reverse('highschool_admin:class_section', args=[record.id]) + '#grades')}
+        next_url=reverse('highschool_admin:class_section', args=[record.id]) + '#grades',
+        allow_edit=hs_admin_grade_entry_enabled())}
 
 
 @register(ce_class_section_tabs, 'tab', slug='grades', title='Grades', order=35,

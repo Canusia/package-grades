@@ -405,6 +405,53 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertNotContains(response, self._url(section))
 
 
+    # -- view only (#3: none / view / edit) --------------------------------
+
+    def test_legacy_yes_no_map_to_edit_and_none(self):
+        from ..services.gating import hs_admin_grade_access
+        self._set('Yes')
+        self.assertEqual(hs_admin_grade_access(), 'edit')
+        self._set('No')
+        self.assertEqual(hs_admin_grade_access(), 'none')
+        self._set('junk')
+        self.assertEqual(hs_admin_grade_access(), 'none')
+
+    def test_view_get_renders_read_only(self):
+        self._set('view')
+        section, _ = self._section()
+        self._period()
+        response = self.client.get(self._url(section))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Midterm')
+        self.assertNotContains(response, 'name="period"')
+
+    def test_view_post_and_autosave_do_not_write(self):
+        self._set('view')
+        section, registration = self._section()
+        self._period()
+        self.assertEqual(self._post(section, registration, grade='C').status_code, 404)
+        self.assertEqual(self._autosave(section, registration, 'C').status_code, 404)
+        registration.refresh_from_db()
+        self.assertEqual(registration.grade, 'A')
+
+    @_needs_tab_registry
+    def test_view_tab_shows_read_only_grid(self):
+        self._set('view')
+        section, _ = self._section()
+        self._period()
+        response = self._page(section)
+        self.assertIn('grades', response.context['detail_tabs'])
+        self.assertNotContains(response, 'data-autosave="1"')
+        self.assertNotContains(response, 'name="period"')
+
+    @_needs_tab_registry
+    def test_edit_tab_is_editable(self):
+        self._set('edit')
+        section, _ = self._section()
+        self._period()
+        self.assertContains(self._page(section), 'name="period"')
+
+
 # Run only the setting tests on the subclass, not the inherited entry tests.
 for _name in [n for n in vars(HSAdminPeriodGradeEntryTests) if n.startswith('test_')]:
     setattr(HSAdminGradeEntrySettingTests, _name, None)

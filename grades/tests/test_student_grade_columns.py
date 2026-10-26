@@ -75,7 +75,7 @@ class ColumnSettingTests(_Base):
         data = {**legacy_value(self.term.id), 'grade_scale': '',
                 'is_active': 'Yes', 'send_grade_reminders': 'Yes',
                 'notify_instructor_on_submit': 'Yes', 'student_grades_visible': 'Yes',
-                'student_transcript_enabled': 'Yes', 'hs_admin_grade_entry': 'No'}
+                'student_transcript_enabled': 'Yes', 'hs_admin_grade_entry': 'none'}
         form = class_section_grades(HttpRequest(), {**data, 'student_grade_columns': []})
         self.assertFalse(form.is_valid())
         self.assertIn('student_grade_columns', form.errors)

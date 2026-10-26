@@ -20,9 +20,9 @@ It runs before anything else in this view, so it gates the POST exactly as it
 gates the render -- a HS admin cannot enter grades for a section at a school
 they do not administer.
 
-Ahead of even that, the whole view 404s unless CE has switched on
-``hs_admin_grade_entry`` (default No), so the URL is not a way round the
-setting.
+Ahead of even that, the whole view 404s unless CE has set
+``hs_admin_grade_entry`` to view or edit (default none), and a POST 404s
+unless it is edit, so the URL is not a way round the setting.
 """
 from django.shortcuts import render, get_object_or_404
 from django.http import Http404, HttpResponseNotFound
@@ -34,7 +34,7 @@ from cis.settings.highschool_admin_portal import (
     highschool_admin_portal as portal_lang,
 )
 
-from ..services.gating import hs_admin_grade_entry_enabled
+from ..services.gating import hs_admin_can_view_grades, hs_admin_grade_entry_enabled
 from ..services.grade_grid import build_grid
 from .grade_entry import handle_grade_post
 
@@ -63,8 +63,11 @@ def _hs_admin_context(request):
 
 
 def class_section_grade(request, record_id):
-    if not hs_admin_grade_entry_enabled():
-        raise Http404('High school admin grade entry is not enabled.')
+    # CE's access setting: view lets the admin see the grid (and the roster
+    # PDF); only edit lets a POST through.
+    if not hs_admin_can_view_grades():
+        raise Http404('High school admin grade access is not enabled.')
+    can_edit = hs_admin_grade_entry_enabled()
 
     menu_data, highschools = _hs_admin_context(request)
     menu = draw_menu(menu_data, 'classes', '', 'highschool_admin')
@@ -83,9 +86,11 @@ def class_section_grade(request, record_id):
     if request.GET.get('action') == 'download_roster_pdf':
         return section.download_roster_pdf()
     if request.method == 'POST':
+        if not can_edit:
+            raise Http404('High school admin grade entry is not enabled.')
         return handle_grade_post(request, section, redirect_url=tab)
     return render(request, 'grades/hs_admin/class_section_grade.html', {
         'menu': menu, 'class_section': section,
         'intro': portal_lang(request).from_db().get('class_blurb', ''),
-        'grid': build_grid(section, post_url=here, next_url=here),
+        'grid': build_grid(section, post_url=here, next_url=here, allow_edit=can_edit),
     })
