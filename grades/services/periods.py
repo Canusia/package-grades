@@ -84,19 +84,33 @@ def grades_for(section, period, registrations):
 
 
 def save_mark(period, registration, grade, user=None):
-    """Write one mark to whichever store the period routes to."""
+    """Write one mark to whichever store the period routes to.
+
+    An unchanged mark is not written, so re-saving a page adds no history row
+    and leaves ``entered_by`` with whoever last changed it. A blank grade for
+    a student with no mark yet is unchanged too.
+    """
     _require(period)
+    grade = grade or ''
     if period.is_final:
         # Final grades stay on the registration -- the column the SIS reads.
+        if (registration.grade or '') == grade:
+            return
         registration.grade = grade
         registration.save(update_fields=['grade'])
         return
 
-    PeriodGrade.objects.update_or_create(
-        period=period,
-        registration=registration,
-        defaults={'grade': grade, 'entered_by': user},
-    )
+    mark = PeriodGrade.objects.filter(period=period, registration=registration).first()
+    if mark is None:
+        if grade:
+            PeriodGrade.objects.create(
+                period=period, registration=registration, grade=grade, entered_by=user)
+        return
+    if (mark.grade or '') == grade:
+        return
+    mark.grade = grade
+    mark.entered_by = user
+    mark.save()
 
 
 def get_status(section, period):
