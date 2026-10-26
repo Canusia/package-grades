@@ -70,6 +70,12 @@ Term grading periods replace the single grade window.
   their own schools that are Active at the class's campus. `register_reports`
   does not update an existing report row: add `highschool_admin` to
   `period_grades`' available-for by hand on an upgraded tenant.
+  HS admins can run it only while High School Admin Grade Access is View or
+  View and enter; with No access the form says access is turned off and a
+  submit is rejected.
+- Saving a grade page writes only the grades that changed: an unchanged
+  grade adds no history row and keeps its `entered_by` (interim) or is not
+  re-saved (final).
 - Tenant hook `grades_columns` (`columns(builtin, default_keys)`) to choose and
   extend the grid's student columns.
 

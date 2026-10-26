@@ -9,8 +9,8 @@ columns, and the settings. For upgrade steps and the change list see
 
 | Grade | Stored on | Exported to the SIS |
 |---|---|---|
-| Interim (mid-semester) marks | `PeriodGrade`, one per student per period, with change history | No |
-| Final grade | `StudentRegistration.grade` (cis), with change history | Yes |
+| Interim (mid-semester) marks | `PeriodGrade`, one per student per period, with change history: each actual change and who made it (re-saving an unchanged grade records nothing) | No |
+| Final grade | `StudentRegistration.grade` (cis), with change history (written only when the grade actually changes) | Yes |
 
 Submission state is per class and per grading period (`SectionPeriodStatus`:
 Not Started, Draft, Submitted). The final period's state is mirrored onto the
@@ -30,11 +30,11 @@ in the settings.
 |---|---|
 | Name | Shown everywhere (e.g. "Mid-Semester Grades 1", "Final Grades"). Unique within the term. |
 | Sequence | Order within the term (grid columns, reports). |
-| Opens on / Due on | Grades can be entered from *opens on* through *due on*. Due cannot be before opens. |
-| Final | The final grade collection: writes the registration grade sent to the SIS. At most one per term. |
-| Reminder frequency (days) | Re-email instructors who have not submitted every N days while the period is open. 0 = off. |
-| Remind days before due | One extra reminder this many days before *due on*. 0 = off. |
-| Visible to students | Students see this period's grades once their class has submitted them. |
+| Opens On / Due On | Grades can be entered from *Opens On* through *Due On*. Due cannot be before opens. |
+| Final Grade Collection | The final grade collection: writes the registration grade sent to the SIS. At most one per term. |
+| Reminder Frequency (days) | Re-email instructors who have not submitted every N days while the period is open. 0 = off. |
+| Remind Days Before Due | One extra reminder this many days before *Due On*. 0 = off. |
+| Visible to Students | Students see this period's grades once their class has submitted them. |
 
 **Rules**
 
@@ -55,8 +55,8 @@ in the settings.
 setting's cron, below) emails each instructor with unsubmitted, active classes
 in an open period. The job only runs when *Send Grades-Due Reminders* is Yes,
 and a period only sends reminders when it has a frequency or a days-before-due
-value. An instructor gets at most one reminder a day, and none once the period
-is submitted. The old `notify_grades_pending` job does nothing since v1.0.0;
+value. An instructor gets at most one reminder email a day per grading
+period, and none once the period is submitted. The old `notify_grades_pending` job does nothing since v1.0.0;
 delete its cron.
 
 ---
@@ -96,16 +96,17 @@ Instructors can only open their own classes.
 
 What they get depends on the **High School Admin Grade Access** setting:
 
-| Setting | Class page Grades tab | Enter / submit | Download Grades |
-|---|---|---|---|
-| No access (default) | hidden | no | no |
-| View grades only | read-only grid | no | yes |
-| View and enter grades | editable grid (same rules as instructors) | yes | yes |
+| Setting | Class page Grades tab | Enter / submit | Download Grades | Grades by Grading Period report |
+|---|---|---|---|---|
+| No access (default) | hidden | no | no | no (the form says access is turned off) |
+| View grades only | read-only grid | no | yes | yes |
+| View and enter grades | editable grid (same rules as instructors) | yes | yes | yes |
 
 - Only classes at schools they administer (Active role). Other classes 404.
 - With *View and enter*, their dashboard shows a page message while a period is open.
-- **Reports:** *Grades by Grading Period* (section 6) is available to them,
-  limited to their schools that are Active at the class's campus.
+- **Reports:** *Grades by Grading Period* (section 6) follows the same setting:
+  with No access they cannot run it. Otherwise it is limited to their schools
+  that are Active at the class's campus.
 
 ---
 
@@ -128,10 +129,13 @@ report lists, and accepts, only the current campus's terms and grading periods.
 Fields marked * are required.
 
 ### Grades by Grading Period
-*For CE and HS admins.* One row per student registration, one column per selected period.
+*For CE and HS admins* (HS admins only while High School Admin Grade Access is
+View or View and enter; section 4). One row per student registration, one
+column per selected period.
 
 - **Filters:** Term(s)* (parent/sub-term tree; a parent includes its
-  sub-terms), Grading Period(s)* (lists only periods of the selected terms),
+  sub-terms), Grading Period(s)* (only periods of the selected terms can be
+  picked; the server also rejects a period of another term),
   High School(s), Registration Status(es), Period Submission Status. No campus
   field: CE get the campuses they process; HS admins get their own Active schools.
 - **Columns:** Term, Course, Class No., Section No., Instructor, Instructor
@@ -142,7 +146,8 @@ Fields marked * are required.
 *For CE.* One row per class per grading period.
 
 - **Filters:** Term(s)* (tree; parent includes sub-terms), Grading Period(s)
-  (follows the terms; blank = every period), High School(s). No campus field.
+  (follows the terms, and the server rejects a period of another term; blank =
+  every period), High School(s). No campus field.
 - **Columns:** Term, Course, Grading Period, Final (Yes/No), Class No., Section
   No., Instructor, Instructor Email, High School, Status (Not Started / Draft /
   Submitted), Status Changed On, Last Reminder.
@@ -232,9 +237,10 @@ periods.
 
 | Symptom | Check |
 |---|---|
-| "No grading periods are set up" | The class's **own** term (sub-terms included) has no periods. |
+| "No grading periods are set up" | The class's **own** term has no periods. |
 | Instructor can't edit | Is the period open today, not submitted, and is the roster confirmed (if required)? CE can Reopen or Edit. |
-| Report: "Choose grading periods of the selected term(s) only" | The period belongs to another term. On the period reports, pick the term first and the period list follows. |
+| Report: "Choose grading periods of the selected term(s) only" | The period belongs to another term (the server checks this on every grades report). On the period reports, pick the term first: periods of other terms are greyed out and unselected. |
+| HS admin: "High school admin access to grades is turned off." on Grades by Grading Period | High School Admin Grade Access is No access; set it to View or View and enter. |
 | HS admin sees no Grades tab | High School Admin Grade Access is No access, or the class's school isn't one of theirs. |
 | No reminders | Send Grades-Due Reminders = Yes, the cron is set, and the period has a reminder frequency or days-before-due. |
 | Student sees no interim grade | The period must be *Visible to students* **and** submitted for that class. |
