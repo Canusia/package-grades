@@ -189,6 +189,6 @@ def reopen_period(request, record_id, period_id):
                              'list-group-item-warning')
         return redirect(back)
     set_status(section, period, 'saved')
-    section.add_note(createdby=request.user, note=f'{request.user.email} reopened {period.name} grades')
+    section.add_note(createdby=request.user, note=f'{escape(request.user.email)} reopened {escape(period.name)} grades')
     messages.add_message(request, messages.SUCCESS, f'{period.name} reopened.', 'list-group-item-success')
     return redirect(back)

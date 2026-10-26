@@ -58,7 +58,7 @@ def class_section_grade(request, record_id):
     # The Class Details layout, with only the Grades and Notes tabs.
     tabs = grade_page_tabs(request, section, render_to_string(
         'grades/partials/_grade_grid.html',
-        {'grid': grid, 'grades_download_url': download}, request=request))
+        {'grid': grid, 'grades_download_url': download, 'in_tab': True}, request=request))
     return render(request, 'grades/instructor/class_section_grade.html', {
         'menu': draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor'),
         'class_section': section,

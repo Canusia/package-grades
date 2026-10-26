@@ -25,7 +25,7 @@ def instructor_grades_tab(request, class_section):
     post_url = reverse('instructor:class_section_grade', args=[class_section.id])
     next_url = reverse('instructor:class_section', args=[class_section.id]) + '#grades'
     return {'grid': build_grid(class_section, post_url=post_url, next_url=next_url),
-            'grades_download_url': post_url + '?action=download_grades'}
+            'grades_download_url': post_url + '?action=download_grades', 'in_tab': True}
 
 
 def grade_page_tabs(request, section, grades_html):
@@ -39,6 +39,9 @@ def grade_page_tabs(request, section, grades_html):
         'active': True, 'lazy': False, 'hidden': False, 'badge': None,
         'url': '', 'html': grades_html,
     })
+    # An older registry without render_tab: the Grades tab alone.
+    if not hasattr(instructor_class_section_tabs, 'render_tab'):
+        return tabs
     notes = instructor_class_section_tabs.render_tab(request, section, 'notes')
     if notes.status_code == 200:
         tabs['notes'] = {

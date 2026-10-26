@@ -36,6 +36,14 @@ def hs_admin_grade_access_value(value):
     value = _LEGACY_HS_ADMIN_GRADE_ACCESS.get(value, value)
     return value if value in dict(HS_ADMIN_GRADE_ACCESS) else 'none'
 
+
+class GradeAccessField(forms.ChoiceField):
+    """The access choices, also accepting a legacy Yes/No post (an old saved
+    form or script); clean_hs_admin_grade_entry maps it to none/edit."""
+
+    def valid_value(self, value):
+        return value in _LEGACY_HS_ADMIN_GRADE_ACCESS or super().valid_value(value)
+
 # Keys added for the Grades Configuration Workbook (#2). from_db() fills these
 # only when absent, so a row saved before they existed keeps behaving as it did.
 NEW_KEY_DEFAULTS = {
@@ -227,7 +235,7 @@ class SettingForm(forms.Form):
                   'left unchecked is not sent to the browser either.',
     )
 
-    hs_admin_grade_entry = forms.ChoiceField(
+    hs_admin_grade_entry = GradeAccessField(
         choices=HS_ADMIN_GRADE_ACCESS,
         label='High School Admin Grade Access',
         help_text='View: high school admins get a read-only Grades tab on their class '
@@ -310,6 +318,9 @@ class SettingForm(forms.Form):
 
     def clean_grades_submitted_cc(self):
         return self._clean_addresses('grades_submitted_cc')
+
+    def clean_hs_admin_grade_entry(self):
+        return hs_admin_grade_access_value(self.cleaned_data.get('hs_admin_grade_entry'))
 
     def clean_debug_email_list(self):
         return self._clean_addresses('debug_email_list')

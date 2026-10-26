@@ -157,6 +157,13 @@ class SettingsFormTest(_Fixture):
         self.assertFalse(form.is_valid())
         self.assertIn('debug_email_list', form.errors)
 
+    def test_legacy_yes_no_grade_access_accepted_and_mapped(self):
+        for posted, stored in (('Yes', 'edit'), ('No', 'none'), ('view', 'view')):
+            form = self._form(hs_admin_grade_entry=posted)
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertEqual(form.cleaned_data['hs_admin_grade_entry'], stored)
+        self.assertFalse(self._form(hs_admin_grade_entry='Maybe').is_valid())
+
     def test_reminders_off_leaves_crontab_alone(self):
         CronTab.objects.update_or_create(
             command='notify_grades_pending', defaults={'cron': '5 5 * * *'})

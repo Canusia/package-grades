@@ -132,7 +132,7 @@ def hs_admin_grades_tab(request, record):
     next_url = reverse('highschool_admin:class_section', args=[record.id]) + '#grades'
     return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
                                allow_edit=hs_admin_grade_entry_enabled()),
-            'grades_download_url': post_url + '?action=download_grades'}
+            'grades_download_url': post_url + '?action=download_grades', 'in_tab': True}
 
 
 @register(ce_class_section_tabs, 'tab', slug='grades', title='Grades', order=35,
@@ -149,4 +149,4 @@ def ce_class_section_grades_tab(request, record):
     return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
                                allow_edit=False, force_period=force, autosave=False),
             'grades_download_url': post_url + '?action=download_grades',
-            'record': record}
+            'record': record, 'in_tab': True}

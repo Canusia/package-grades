@@ -168,6 +168,15 @@ class CEClassTabTests(GradesTestCase):
         self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
         self.assertEqual(SectionPeriodStatus.objects.get(period=self.mid1).status, 'saved')
 
+    def test_reopen_note_escapes_the_period_name(self):
+        self.mid1.name = '<b>Mid</b> 1'
+        self.mid1.save()
+        set_status(self.section, self.mid1, 'submitted')
+        self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
+        note = ClassSectionNote.objects.filter(class_section=self.section).latest('createdon').note
+        self.assertIn('reopened &lt;b&gt;Mid&lt;/b&gt; 1 grades', note)
+        self.assertNotIn('<b>', note)
+
     def test_non_ce_forbidden(self):
         self.client.force_login(self.section.teacher.user)
         resp = self.client.post(reverse('grades_ce:reopen_period', args=[self.section.id, self.mid1.id]))
