@@ -9,6 +9,10 @@ This repository is the source of the `myce_grades` distribution
 without it, in which case the grades URLs, the grades settings configurator, the
 grade reports and the CE sections-list grades tab are simply absent.
 
+**Using it:** see the internal guide, [docs/GUIDE.md](docs/GUIDE.md): grading periods,
+what each portal (CE, instructor, high school admin, student) gets, every report
+and its columns, and the settings. Changes and upgrade steps: [CHANGELOG.md](CHANGELOG.md).
+
 ## Dependency direction
 
 `grades` depends on `cis` and `myce`. **`cis` never imports `grades`.** The three
@@ -154,12 +158,14 @@ Report.objects.filter(name__startswith='grade_by').update(app='grades.grades')
 
 ## Shipping a release
 
-`setup.cfg` stays at `version = 0.0.1`; releases are tag-driven CalVer
-(`YYYY.MAJOR.MINOR`), matching the other Canusia packages.
+Releases are SemVer tags (`vMAJOR.MINOR.PATCH`, e.g. `v1.0.0`). The `version` in
+`setup.cfg` and `pyproject.toml` must equal the tag: pip keys upgrades off it, so a
+tag whose metadata did not move installs nothing over an existing install.
 
-1. Commit inside `webapp/grades` (it is a separate git repo in a tenant checkout).
+1. Commit inside `webapp/grades` (it is a separate git repo in a tenant checkout),
+   bumping `version` in both metadata files and adding the CHANGELOG entry.
 2. Push to `Canusia/package-grades`.
-3. Tag the new version, e.g. `2026.1.1`.
+3. Tag that commit, e.g. `v1.0.0`.
 4. Bump the pin in the tenant's `webapp/requirements.txt` to that tag.
 5. `git add webapp/grades` in the tenant to move the gitlink to the new commit.
 6. Merge to staging / main.
