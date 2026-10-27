@@ -135,6 +135,26 @@ class SettingsFormTest(_Fixture):
                 **overrides}
         return class_section_grades(HttpRequest(), data)
 
+    def test_student_columns_and_hs_admin_entry_round_trip(self):
+        # #13: both were validated but never stored, so from_db() refilled
+        # the defaults and the page reverted after "Successfully saved".
+        form = self._form(student_grade_columns=['term', 'course', 'grade'],
+                          hs_admin_grade_entry='Yes')
+        self.assertTrue(form.is_valid(), form.errors)
+        form.run_record()
+        values = class_section_grades.from_db()
+        self.assertEqual(values['student_grade_columns'], ['term', 'course', 'grade'])
+        self.assertEqual(values['hs_admin_grade_entry'], 'Yes')
+
+    def test_every_form_field_is_stored(self):
+        # Guard for #13: run_record() replaces the whole stored value, so a
+        # field missing from _to_python() is silently dropped on every save.
+        not_stored = set()  # fields deliberately not saved go here
+        form = self._form()
+        self.assertTrue(form.is_valid(), form.errors)
+        missing = set(form.fields) - set(form._to_python()) - not_stored
+        self.assertEqual(missing, set())
+
     def test_cron_optional_when_reminders_off(self):
         form = self._form(send_grade_reminders='No', cron='')
         self.assertTrue(form.is_valid(), form.errors)

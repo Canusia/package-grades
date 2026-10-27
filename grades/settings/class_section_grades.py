@@ -554,6 +554,11 @@ class SettingForm(forms.Form):
             'send_grade_reminders': self.cleaned_data['send_grade_reminders'],
             'student_grades_visible': self.cleaned_data['student_grades_visible'],
             'student_transcript_enabled': self.cleaned_data['student_transcript_enabled'],
+            # #13: run_record() replaces the whole value, so a field left out
+            # here is dropped on every save and from_db() refills its default.
+            'student_grade_columns': (self.cleaned_data.get('student_grade_columns')
+                                      or student_table.DEFAULT),
+            'hs_admin_grade_entry': self.cleaned_data['hs_admin_grade_entry'],
 
             'reminder_dates': self.cleaned_data.get('reminder_dates', ''),
             'cron': self.cleaned_data.get('cron', ''),
