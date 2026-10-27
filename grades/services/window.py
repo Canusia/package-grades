@@ -27,6 +27,9 @@ def end_request_memo(**kwargs):
 def cached_final_status():
     """Memoise submitted_grade()'s lookups inside the block, as a request
     does -- for jobs and tests that show many registrations outside one."""
+    if _final_status_memo.get() is not None:  # already memoising: share it
+        yield
+        return
     token = _final_status_memo.set({})
     try:
         yield
@@ -35,8 +38,13 @@ def cached_final_status():
 
 
 def clear_request_memo(**kwargs):
-    """A GradingPeriod or SectionPeriodStatus was saved or deleted: forget
-    what this request has looked up, so the change shows straight away."""
+    """A GradingPeriod or SectionPeriodStatus was saved, or a GradingPeriod
+    deleted: forget what this request has looked up, so the change shows
+    straight away.
+
+    Not seen until the next request: QuerySet.update()/bulk_create() (no
+    signals; nothing in grades or cis writes these models that way) and a
+    save inside a transaction that is then rolled back."""
     memo = _final_status_memo.get()
     if memo:
         memo.clear()

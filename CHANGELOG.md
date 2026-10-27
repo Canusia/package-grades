@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+
+- #13: Class Grades settings now save "Student Grades Table Columns" and
+  "High School Admin Grade Access". Both were validated and then dropped, so
+  the page reverted to the defaults after every save. Choices lost to earlier
+  saves are not recovered: set them again and save once.
+- #12: `submitted_grade()` no longer queries per registration inside a request
+  (CE Registrations and Drop/WD request tables): one query per term for its
+  final period, one per final period for its statuses. Saving a grading
+  period or a section's period status clears the memo; outside a request
+  nothing is memoised. `services.cached_final_status()` memoises a block of
+  work outside a request (jobs, tests).
+- #11: `compat.has_module()` treats a module already in `sys.modules` as
+  importable, so package-cis registry stand-ins without `__spec__` no longer
+  crash startup.
+
 ## 1.0.0
 
 Term grading periods replace the single grade window.

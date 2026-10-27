@@ -96,7 +96,10 @@ def flag_grade_change(sender, instance, created, update_fields=None, **kwargs):
 
 # submitted_grade()'s per-request memo (#12): started and dropped with each
 # request, and cleared whenever a grading period or a section's period status
-# changes, so a status saved mid-request is seen by the next lookup.
+# is saved, or a grading period deleted, so a change made mid-request is seen
+# by the next lookup. No post_delete receiver on SectionPeriodStatus: its rows
+# go only when their section or period does, and a receiver would cost cis
+# Django's fast cascade delete on every ClassSection delete.
 def _connect_final_status_memo():
     from .models import GradingPeriod, SectionPeriodStatus
     from .services import window
@@ -104,10 +107,12 @@ def _connect_final_status_memo():
                             dispatch_uid='grades_final_status_memo_start')
     request_finished.connect(window.end_request_memo,
                              dispatch_uid='grades_final_status_memo_end')
-    for model in (GradingPeriod, SectionPeriodStatus):
-        for signal in (post_save, post_delete):
-            signal.connect(window.clear_request_memo, sender=model,
-                           dispatch_uid=f'grades_final_status_memo_{model.__name__}_{signal}')
+    post_save.connect(window.clear_request_memo, sender=GradingPeriod,
+                      dispatch_uid='grades_final_status_memo_period_saved')
+    post_delete.connect(window.clear_request_memo, sender=GradingPeriod,
+                        dispatch_uid='grades_final_status_memo_period_deleted')
+    post_save.connect(window.clear_request_memo, sender=SectionPeriodStatus,
+                      dispatch_uid='grades_final_status_memo_status_saved')
 
 
 _connect_final_status_memo()

@@ -117,3 +117,20 @@ class SubmittedGradeQueryTests(GradesTestCase):
         with cached_final_status():
             _, queries = self._grades(registrations)
         self.assertEqual(queries, 2)  # the term's final period + its statuses
+
+    def test_final_period_deleted_mid_request_is_seen(self):
+        registration = self._registrations([self.sections[1]])[0]
+        self.assertEqual(submitted_grade(registration), '-')  # final period: 'saved'
+        self.sections[1].grade_status = 'submitted'
+        self.sections[1].save()
+        registration = self._registrations([self.sections[1]])[0]
+        self.final.delete()
+        self.assertEqual(submitted_grade(registration), 'A')  # back to grade_status
+
+    def test_save_inside_cached_final_status_reaches_the_request(self):
+        from ..services import cached_final_status
+        registration = self._registrations([self.sections[2]])[0]
+        self.assertEqual(submitted_grade(registration), '-')
+        with cached_final_status():
+            set_status(self.sections[2], self.final, 'submitted')
+        self.assertEqual(submitted_grade(registration), 'A')
