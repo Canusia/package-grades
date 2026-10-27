@@ -9,6 +9,7 @@ from here.
 from ..services.roster import students_for_grades
 from ..services.transcript import render_transcript
 from ..services.window import (
+    cached_final_status,
     can_view_grades,
     current_grade_terms,
     grade_scale,
@@ -20,6 +21,7 @@ from ..services.window import (
 )
 
 __all__ = [
+    'cached_final_status',
     'can_view_grades',
     'current_grade_terms',
     'grade_scale',

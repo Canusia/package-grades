@@ -24,13 +24,21 @@ silently turning into the fallback.
 """
 import importlib
 import importlib.util
+import sys
 
 
 def has_module(name):
-    """True when the dotted module ``name`` is importable."""
+    """True when the dotted module ``name`` is importable.
+
+    A module already in ``sys.modules`` counts as importable even with no
+    ``__spec__`` (package-cis registry stand-ins, #11), where ``find_spec``
+    would raise ValueError. A ``None`` entry means the import is blocked.
+    """
+    if name in sys.modules:
+        return sys.modules[name] is not None
     try:
         return importlib.util.find_spec(name) is not None
-    except ModuleNotFoundError:  # a parent package is missing
+    except (ModuleNotFoundError, ValueError):  # missing parent / spec-less parent
         return False
 
 

@@ -9,7 +9,8 @@ live in ``cis.signals.sections.grades_submitted``. ``cis`` keeps only the
 owned by this (optional) app, so a tenant without ``grades`` installed simply
 never sends it.
 """
-from django.db.models.signals import post_save, pre_save
+from django.core.signals import request_finished, request_started
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.template import Context, Template
 from django.template.loader import get_template
@@ -91,3 +92,22 @@ def flag_grade_change(sender, instance, created, update_fields=None, **kwargs):
         sync.status = GradeSISSync.SENT
         sync.grade_changed_at = None
         sync.save(update_fields=['status', 'grade_changed_at'])
+
+
+# submitted_grade()'s per-request memo (#12): started and dropped with each
+# request, and cleared whenever a grading period or a section's period status
+# changes, so a status saved mid-request is seen by the next lookup.
+def _connect_final_status_memo():
+    from .models import GradingPeriod, SectionPeriodStatus
+    from .services import window
+    request_started.connect(window.start_request_memo,
+                            dispatch_uid='grades_final_status_memo_start')
+    request_finished.connect(window.end_request_memo,
+                             dispatch_uid='grades_final_status_memo_end')
+    for model in (GradingPeriod, SectionPeriodStatus):
+        for signal in (post_save, post_delete):
+            signal.connect(window.clear_request_memo, sender=model,
+                           dispatch_uid=f'grades_final_status_memo_{model.__name__}_{signal}')
+
+
+_connect_final_status_memo()

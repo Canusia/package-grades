@@ -27,6 +27,30 @@ class CisHasTests(TestCase):
         self.assertFalse(compat.has_module('no_such_pkg.child'))
 
 
+class SpecLessModuleTests(TestCase):
+    """#11: package-cis registry stand-ins sit in sys.modules with no
+    __spec__, which makes find_spec() raise ValueError."""
+
+    def test_spec_less_module_in_sys_modules_is_importable(self):
+        import sys
+        import types
+        name = 'grades_test_standin_registry'
+        stand_in = types.ModuleType(name)
+        stand_in.__spec__ = None
+        stand_in.registration = object()
+        self.addCleanup(sys.modules.pop, name, None)
+        sys.modules[name] = stand_in
+        self.assertTrue(compat.has_module(name))
+        self.assertIs(compat.registry(name, 'registration'), stand_in.registration)
+
+    def test_none_in_sys_modules_is_not_importable(self):
+        import sys
+        name = 'grades_test_blocked_module'
+        self.addCleanup(sys.modules.pop, name, None)
+        sys.modules[name] = None
+        self.assertFalse(compat.has_module(name))
+
+
 class PickerQuerysetFallbackTests(TestCase):
     def test_without_highschool_scope_lists_active_schools_by_name(self):
         b = HighSchool.objects.create(name='Zeta Compat', code='zc1', status='Active')

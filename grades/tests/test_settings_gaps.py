@@ -173,6 +173,26 @@ class SettingsFormTest(_Fixture):
         self.assertEqual(CronTab.objects.get(command='notify_grades_pending').cron, '5 5 * * *')
         self.assertEqual(Setting.objects.get(key=KEY).value['send_grade_reminders'], 'No')
 
+    def test_student_columns_and_hs_admin_access_round_trip(self):
+        # #13: both were validated but never stored, so from_db() refilled
+        # the defaults and the page reverted after "Successfully saved".
+        form = self._form(student_grade_columns=['term', 'course', 'grade'],
+                          hs_admin_grade_entry='edit')
+        self.assertTrue(form.is_valid(), form.errors)
+        form.run_record()
+        values = class_section_grades.from_db()
+        self.assertEqual(values['student_grade_columns'], ['term', 'course', 'grade'])
+        self.assertEqual(values['hs_admin_grade_entry'], 'edit')
+
+    def test_every_form_field_is_stored(self):
+        # Guard for #13: run_record() replaces the whole stored value, so a
+        # field missing from _to_python() is silently dropped on every save.
+        not_stored = set()  # fields deliberately not saved go here
+        form = self._form()
+        self.assertTrue(form.is_valid(), form.errors)
+        missing = set(form.fields) - set(form._to_python()) - not_stored
+        self.assertEqual(missing, set())
+
     def test_from_db_drops_retired_keys_of_a_legacy_row(self):
         values = class_section_grades.from_db()
         for key in ('terms', 'start_date', 'end_date', 'grades_open', 'grades_closed'):

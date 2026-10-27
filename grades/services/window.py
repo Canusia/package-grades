@@ -4,7 +4,42 @@ Grade-window / grade-scale services, driven by grading periods.
 Imports of ``cis`` models are lazy (inside function bodies) to avoid app-loading
 order problems.
 """
+import contextvars
 import datetime
+from contextlib import contextmanager
+
+# Per-request memo for submitted_grade() (#12). None outside a request, so
+# commands and tasks read the database on every call as before.
+_final_status_memo = contextvars.ContextVar('grades_final_status_memo', default=None)
+
+
+def start_request_memo(**kwargs):
+    """request_started: begin an empty memo for this request."""
+    _final_status_memo.set({})
+
+
+def end_request_memo(**kwargs):
+    """request_finished: drop the memo."""
+    _final_status_memo.set(None)
+
+
+@contextmanager
+def cached_final_status():
+    """Memoise submitted_grade()'s lookups inside the block, as a request
+    does -- for jobs and tests that show many registrations outside one."""
+    token = _final_status_memo.set({})
+    try:
+        yield
+    finally:
+        _final_status_memo.reset(token)
+
+
+def clear_request_memo(**kwargs):
+    """A GradingPeriod or SectionPeriodStatus was saved or deleted: forget
+    what this request has looked up, so the change shows straight away."""
+    memo = _final_status_memo.get()
+    if memo:
+        memo.clear()
 
 
 def _periods():
@@ -98,12 +133,40 @@ def submitted_grade(registration):
     (0.0.x) -- ``ClassSection.grade_status`` decides; ``set_status`` mirrors
     the final period onto that column, so the two never disagree for v1 data.
     """
-    from ..models import GradingPeriod, SectionPeriodStatus
     section = registration.class_section
-    final = GradingPeriod.objects.filter(term_id=section.term_id, is_final=True).first()
-    row = (SectionPeriodStatus.objects.filter(period=final, class_section=section).first()
-           if final is not None else None)
-    status = row.status if row is not None else section.grade_status
+    status = _final_period_status(section)
+    if status is None:
+        status = section.grade_status
     if status != 'submitted':
         return '-'
     return registration.grade
+
+
+def _final_period_status(section):
+    """The section's status for its term's final period, or None when the term
+    has no final period or the section has no status row for it.
+
+    Inside a request this costs one query per term and one per final period,
+    however many registrations are shown (#12); outside it, up to two per call.
+    """
+    from ..models import GradingPeriod, SectionPeriodStatus
+    memo = _final_status_memo.get()
+    if memo is None:
+        final = GradingPeriod.objects.filter(term_id=section.term_id, is_final=True).first()
+        row = (SectionPeriodStatus.objects.filter(period=final, class_section=section).first()
+               if final is not None else None)
+        return row.status if row is not None else None
+
+    term_key = ('final', section.term_id)
+    if term_key not in memo:
+        memo[term_key] = (GradingPeriod.objects.filter(term_id=section.term_id, is_final=True)
+                          .values_list('id', flat=True).first())
+    final_id = memo[term_key]
+    if final_id is None:
+        return None
+
+    status_key = ('statuses', final_id)
+    if status_key not in memo:
+        memo[status_key] = dict(SectionPeriodStatus.objects.filter(period_id=final_id)
+                                .values_list('class_section_id', 'status'))
+    return memo[status_key].get(section.id)
