@@ -97,6 +97,7 @@ class GradesConfig(AppConfig):
         from . import tabs  # noqa: F401
         from . import actions  # noqa: F401
         from . import instructor_tabs  # noqa: F401
+        from . import menu  # noqa: F401  sidebar items (cis.menu_registry)
 
 
 class DevGradesConfig(AppConfig):
@@ -121,3 +122,4 @@ class DevGradesConfig(AppConfig):
         from . import tabs  # noqa: F401
         from . import actions  # noqa: F401
         from . import instructor_tabs  # noqa: F401
+        from . import menu  # noqa: F401  sidebar items (cis.menu_registry)
