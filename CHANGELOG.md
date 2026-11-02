@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+### Changed
+
+- Publishes the CE, instructor and student sidebar items to the cis menu registry
+  (myce_cis v0.1.43a+). On older cis nothing changes.
+
 ## 1.0.1
 
 ### Fixed
