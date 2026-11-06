@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0
+
+### Added
+
+- #15: grading-period reminders also go to HS admins who hold Can submit
+  grades at the section's school (course campus) when HS admin grade access is
+  Edit, with their own subject/message settings. One email per person per
+  period; sections without a teacher are reminded when they have such admins.
+
+### Changed
+
+- A blank teacher subject no longer stops admin reminders. On a cis without
+  per-school HS admin permissions, admin reminders are off (teachers unchanged).
+
 ## 1.0.2
 
 ### Changed
