@@ -4,6 +4,7 @@ An admin is a recipient when HS admin grade entry is Edit and their position
 at the section's high school holds Can submit grades for the course's campus.
 """
 from datetime import date, timedelta
+from unittest import mock
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
@@ -278,3 +279,158 @@ class HSAdminReminderSettingDefaultsTests(TestCase):
             key=GRADES_KEY,
             defaults={'value': {'grades': 'A,B', 'hsadmin_grades_due_subject': ''}})
         self.assertEqual(class_section_grades.from_db()['hsadmin_grades_due_subject'], '')
+
+
+class HSAdminReminderScopeTests(HSAdminPeriodReminderTests):
+    """Review follow-ups: campus scoping, cis compatibility, query count."""
+
+    # The parent's tests are not re-run here.
+    test_admin_with_submit_grades_gets_the_admin_email = None
+    test_admin_without_the_permission_is_not_emailed = None
+    test_inactive_position_is_not_emailed = None
+    test_admin_at_another_school_is_not_emailed = None
+    test_view_or_none_grade_access_sends_no_admin_email = None
+    test_empty_admin_subject_sends_no_admin_email = None
+    test_section_without_teacher_reminds_admins_and_is_stamped = None
+    test_section_without_teacher_or_admins_is_skipped = None
+    test_submitted_section_does_not_remind_admins = None
+    test_one_admin_email_per_period_covering_all_sections = None
+    test_teacher_who_is_also_an_admin_gets_one_email = None
+    test_debug_mode_routes_admin_email_to_debug_list = None
+
+    def _campus(self, code):
+        from cis.models.course import Campus
+        return Campus.objects.create(name=f'Campus {code}', code=code)
+
+    def _on_campus(self, campus):
+        self.course.campus = campus
+        self.course.save()
+
+    def test_campus_grant_counts_only_on_its_campus(self):
+        here, there = self._campus('HR1'), self._campus('HR2')
+        self._on_campus(here)
+        self._admin('here_admin', campus=here)
+        self._admin('there_admin', campus=there)
+        self._admin('anywhere_admin')
+        self._section(teacher=False)
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(),
+                         ['anywhere_admin@example.com', 'here_admin@example.com'])
+
+    def test_deactivated_admin_account_is_not_emailed(self):
+        user, _role = self._admin('gone_admin')
+        user.is_active = False
+        user.save()
+        self._section(teacher=False)
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(Message.objects.count(), 0)
+
+    def test_teacher_who_is_also_an_admin_gets_the_teacher_template(self):
+        role = HSAdministratorPosition.objects.create(
+            hsadmin=HSAdministrator.objects.create(user=self.teacher_user),
+            highschool=self.school, position=self.position, status='Active')
+        role.grant(HSAdminPerm.SUBMIT_GRADES)
+        self._section()
+        self._section(teacher=False)
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        body = self._body_for('hsr_inst@example.com')
+        self.assertIn('Teacher Tea: 2 pending.', body)
+
+    def test_teacher_with_bad_email_still_lets_admins_be_reminded(self):
+        bad = User.objects.create_user(
+            username='hsr_bad', email='not-an-address', password='x')
+        section = ClassSection.objects.create(
+            class_number='HSR-BAD', section_number='01', term=self.term,
+            course=self.course, teacher=Teacher.objects.create(user=bad),
+            highschool=self.school)
+        self._admin('perm_admin')
+        period = self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['perm_admin@example.com'])
+        self.assertEqual(SectionPeriodStatus.objects.get(
+            period=period, class_section=section).last_notified_on, TODAY)
+
+    def test_blank_teacher_subject_still_reminds_admins(self):
+        setting = Setting.objects.get(key=GRADES_KEY)
+        value = dict(setting.value)
+        value['grades_due_subject'] = ''
+        setting.value = value
+        setting.save()
+        self._admin('perm_admin')
+        self._section()
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['perm_admin@example.com'])
+
+    def test_cis_without_hs_admin_permissions_reminds_teachers_only(self):
+        import builtins
+        real_import = builtins.__import__
+
+        def no_perms(name, *args, **kwargs):
+            if name == 'cis.models.highschool_administrator':
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        self._admin('perm_admin')
+        self._section()
+        self._period()
+        with mock.patch('builtins.__import__', side_effect=no_perms):
+            notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['hsr_inst@example.com'])
+
+    def test_cis_without_submit_grades_reminds_teachers_only(self):
+        self._admin('perm_admin')
+        self._section()
+        self._period()
+        with mock.patch.object(HSAdminPerm, 'SUBMIT_GRADES', None):
+            notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['hsr_inst@example.com'])
+
+    def test_with_perm_without_campus_reminds_teachers_only(self):
+        from cis.models.highschool_administrator import (
+            HSAdministratorPositionQuerySet)
+
+        def old_with_perm(self, codename):
+            return self
+
+        self._admin('perm_admin')
+        self._section()
+        self._period()
+        with mock.patch.object(HSAdministratorPositionQuerySet, 'with_perm', old_with_perm):
+            notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['hsr_inst@example.com'])
+
+    def test_admin_lookup_is_not_per_section(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self._on_campus(self._campus('HR3'))
+        self._admin('perm_admin')
+        period = self._period()
+
+        def admin_queries(count):
+            for _ in range(count):
+                self._section(teacher=False)
+            SectionPeriodStatus.objects.all().delete()
+            with CaptureQueriesContext(connection) as ctx:
+                notify_sections_pending_period_grade(today=TODAY)
+            return sum(1 for q in ctx.captured_queries
+                       if 'cis_hsadministratorposition' in q['sql']
+                       or 'cis_campus' in q['sql'])
+
+        self.assertEqual(admin_queries(1), admin_queries(5))

@@ -44,6 +44,7 @@ parent term's periods, which is what lets a subterm keep its own schedule.
 See docs/superpowers/specs/2026-08-02-grades-grading-periods-design.md
 """
 import datetime
+import logging
 
 from django.core.validators import validate_email
 from django.template import Context, Template
@@ -52,6 +53,8 @@ from django.template.loader import get_template
 from .email import send_grades_mail
 
 from ..models import GradingPeriod, SectionPeriodStatus
+
+logger = logging.getLogger(__name__)
 
 
 def periods_due_for_reminder(today=None):
@@ -108,15 +111,22 @@ def _hs_admin_lookup(configs):
             HSAdminPerm, HSAdministratorPosition)
     except ImportError:  # cis before per-school HS admin permissions
         return None
+    codename = getattr(HSAdminPerm, 'SUBMIT_GRADES', None)
+    with_perm = getattr(HSAdministratorPosition.objects.none(), 'with_perm', None)
+    if codename is None or with_perm is None or not _takes_campus(with_perm):
+        # A partial port of the permissions: remind teachers only.
+        logger.warning('grades: this cis cannot look up HS admins who can '
+                       'submit grades; reminding teachers only.')
+        return None
 
     cache = {}
 
-    def lookup(highschool_id, campus):
-        key = (highschool_id, getattr(campus, 'pk', campus))
+    def lookup(highschool_id, campus_id):
+        key = (highschool_id, campus_id)
         if key not in cache:
             positions = HSAdministratorPosition.objects.filter(
-                highschool_id=highschool_id,
-            ).with_perm(HSAdminPerm.SUBMIT_GRADES, campus).select_related(
+                highschool_id=highschool_id, hsadmin__user__is_active=True,
+            ).with_perm(codename, campus_id).select_related(
                 'hsadmin__user').distinct()
             users = []
             for position in positions:
@@ -128,6 +138,14 @@ def _hs_admin_lookup(configs):
     return lookup
 
 
+def _takes_campus(method):
+    import inspect
+    try:
+        return 'campus' in inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def _valid_email(address):
     try:
         validate_email(address)
@@ -136,20 +154,23 @@ def _valid_email(address):
     return True
 
 
-def _section_recipients(section, admin_lookup):
+def _section_recipients(section, admin_lookup, teachers_on=True):
     """``[(user, kind)]`` for one section: its teacher ('teacher') when they
     have an email address, then the permitted HS admins ('hsadmin')."""
     recipients = []
-    if section.teacher_id and _valid_email(section.teacher.user.email):
+    if teachers_on and section.teacher_id and _valid_email(section.teacher.user.email):
         recipients.append((section.teacher.user, 'teacher'))
     if admin_lookup is not None and section.highschool_id:
-        campus = getattr(section.course, 'campus', None)
-        for user in admin_lookup(section.highschool_id, campus):
+        # The id, not the object: no Campus query per section, and a
+        # single-campus cis (no Course.campus) reads None.
+        campus_id = getattr(section.course, 'campus_id', None)
+        for user in admin_lookup(section.highschool_id, campus_id):
             recipients.append((user, 'hsadmin'))
     return recipients
 
 
-def sections_pending_for_period(period, today=None, admin_lookup=None):
+def sections_pending_for_period(period, today=None, admin_lookup=None,
+                                teachers_on=True):
     """``[(section, status_row)]`` for sections that should be reminded now.
 
     Only active sections (status 'A', as the CE summary counts them) on the
@@ -163,9 +184,9 @@ def sections_pending_for_period(period, today=None, admin_lookup=None):
 
     has_teacher = Q(teacher__isnull=False) & ~Q(teacher__user__email='') & Q(
         teacher__user__email__isnull=False)
-    who = has_teacher
+    who = has_teacher if teachers_on else Q(pk__in=[])
     if admin_lookup is not None:
-        who = has_teacher | Q(highschool__isnull=False)
+        who = who | Q(highschool__isnull=False)
 
     candidates = ClassSection.objects.filter(
         who, term_id=period.term_id, status='A',
@@ -173,7 +194,8 @@ def sections_pending_for_period(period, today=None, admin_lookup=None):
 
     pending = []
     for section in candidates:
-        if admin_lookup is not None and not _section_recipients(section, admin_lookup):
+        if admin_lookup is not None and not _section_recipients(
+                section, admin_lookup, teachers_on):
             continue
         # A missing row means "never submitted, never notified"; creating it
         # with the model defaults puts it in precisely that state.
@@ -233,11 +255,12 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
     today = today or datetime.date.today()
     configs = class_section_grades.from_db()
 
-    email_subject = configs.get('grades_due_subject')
-    if not email_subject:
-        return None
-
+    # Teachers need grades_due_subject; admins need their own subject (and
+    # grade entry Edit). Nothing to send without either.
+    teachers_on = bool(configs.get('grades_due_subject'))
     admin_lookup = _hs_admin_lookup(configs)
+    if not teachers_on and admin_lookup is None:
+        return None
     periods = list(periods_due_for_reminder(today))
 
     summary_lines = [
@@ -249,14 +272,15 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
     total_teachers = total_admins = 0
 
     for period in periods:
-        pending = sections_pending_for_period(period, today, admin_lookup)
+        pending = sections_pending_for_period(
+            period, today, admin_lookup, teachers_on)
 
         # One email per (person, period) covering all their sections. A
         # person who teaches any of them gets the teacher email, even when
         # they are also an admin at the school.
         by_user = {}
         for section, status_row in pending:
-            for user, kind in _section_recipients(section, admin_lookup):
+            for user, kind in _section_recipients(section, admin_lookup, teachers_on):
                 entry = by_user.setdefault(user.pk, {'user': user, 'kind': kind, 'rows': []})
                 if kind == 'teacher':
                     entry['kind'] = 'teacher'
