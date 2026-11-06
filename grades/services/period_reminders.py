@@ -157,15 +157,25 @@ def _valid_email(address):
 def _section_recipients(section, admin_lookup, teachers_on=True):
     """``[(user, kind)]`` for one section: its teacher ('teacher') when they
     have an email address, then the permitted HS admins ('hsadmin')."""
+    from ..compat import section_highschool_ids
     recipients = []
+    # The primary teacher only: a secondary teacher (cis#154) never enters
+    # grades, so is never reminded.
     if teachers_on and section.teacher_id and _valid_email(section.teacher.user.email):
         recipients.append((section.teacher.user, 'teacher'))
-    if admin_lookup is not None and section.highschool_id:
+    if admin_lookup is not None:
         # The id, not the object: no Campus query per section, and a
         # single-campus cis (no Course.campus) reads None.
         campus_id = getattr(section.course, 'campus_id', None)
-        for user in admin_lookup(section.highschool_id, campus_id):
-            recipients.append((user, 'hsadmin'))
+        # The primary school and any secondary schools (cis#154), whose
+        # admins grade their own students. An admin at two of them is
+        # listed once.
+        seen = set()
+        for highschool_id in section_highschool_ids(section):
+            for user in admin_lookup(highschool_id, campus_id):
+                if user.pk not in seen:
+                    seen.add(user.pk)
+                    recipients.append((user, 'hsadmin'))
     return recipients
 
 
@@ -175,7 +185,8 @@ def sections_pending_for_period(period, today=None, admin_lookup=None,
 
     Only active sections (status 'A', as the CE summary counts them) on the
     period's own term, and only those with someone to remind: a teacher with
-    an email address, or (with ``admin_lookup``) a permitted HS admin.
+    an email address, or (with ``admin_lookup``) a permitted HS admin at the
+    primary or a secondary school (cis#154).
     """
     from django.db.models import Q
     from cis.models.section import ClassSection
@@ -185,12 +196,20 @@ def sections_pending_for_period(period, today=None, admin_lookup=None,
     has_teacher = Q(teacher__isnull=False) & ~Q(teacher__user__email='') & Q(
         teacher__user__email__isnull=False)
     who = has_teacher if teachers_on else Q(pk__in=[])
+    secondary = hasattr(ClassSection, 'all_highschools')  # cis#154
     if admin_lookup is not None:
         who = who | Q(highschool__isnull=False)
+        if secondary:
+            from cis.models.section_secondary import ClassSectionSecondaryHighSchool
+            who = who | Q(pk__in=ClassSectionSecondaryHighSchool.objects.values(
+                'class_section_id'))
 
     candidates = ClassSection.objects.filter(
         who, term_id=period.term_id, status='A',
     ).select_related('teacher__user', 'course')
+    if admin_lookup is not None and secondary:
+        # One query for every section's secondary schools, not one each.
+        candidates = candidates.prefetch_related('secondary_highschool_links')
 
     pending = []
     for section in candidates:

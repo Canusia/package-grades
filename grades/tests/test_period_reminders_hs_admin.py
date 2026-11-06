@@ -434,3 +434,85 @@ class HSAdminReminderScopeTests(HSAdminPeriodReminderTests):
                        or 'cis_campus' in q['sql'])
 
         self.assertEqual(admin_queries(1), admin_queries(5))
+
+
+class HSAdminReminderSecondaryTests(HSAdminPeriodReminderTests):
+    """cis#154: admins at a section's secondary high schools are reminded
+    too; secondary teachers are not."""
+
+    def _secondary_section(self, teacher=True, primary=True):
+        section = self._section(teacher=teacher, school=primary)
+        section.add_secondary_highschool(self.other_school)
+        return section
+
+    def test_secondary_school_admin_is_reminded(self):
+        self._admin('second_admin', school=self.other_school)
+        self._secondary_section()
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(),
+                         ['hsr_inst@example.com', 'second_admin@example.com'])
+        self.assertIn('1 pending', self._body_for('second_admin@example.com'))
+
+    def test_section_with_only_a_secondary_school_reminds_its_admin(self):
+        self._admin('second_admin', school=self.other_school)
+        section = self._secondary_section(teacher=False, primary=False)
+        period = self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['second_admin@example.com'])
+        self.assertEqual(SectionPeriodStatus.objects.get(
+            period=period, class_section=section).last_notified_on, TODAY)
+
+    def test_admin_at_both_schools_counts_the_section_once(self):
+        user, _role = self._admin('both_admin')
+        HSAdministratorPosition.objects.create(
+            hsadmin=HSAdministrator.objects.get(user=user), highschool=self.other_school,
+            position=self.position, status='Active').grant(HSAdminPerm.SUBMIT_GRADES)
+        self._secondary_section()
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        admin_messages = [m for m in Message.objects.all()
+                          if 'both_admin@example.com' in m.email.to]
+        self.assertEqual(len(admin_messages), 1)
+        self.assertIn('1 pending', admin_messages[0].email.body)
+
+    def test_secondary_teacher_is_not_reminded(self):
+        other = User.objects.create_user(
+            username='hsr_second', email='hsr_second@example.com', password='x')
+        section = self._section()
+        section.add_secondary_teacher(Teacher.objects.create(user=other))
+        self._period()
+
+        notify_sections_pending_period_grade(today=TODAY)
+
+        self.assertEqual(self._recipients(), ['hsr_inst@example.com'])
+
+    def test_secondary_schools_add_no_query_per_section(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self._admin('second_admin', school=self.other_school)
+        self._period()
+
+        def queries(count):
+            for _ in range(count):
+                self._secondary_section(teacher=False)
+            SectionPeriodStatus.objects.all().delete()
+            Message.objects.all().delete()
+            with CaptureQueriesContext(connection) as ctx:
+                notify_sections_pending_period_grade(today=TODAY)
+            return sum(1 for q in ctx.captured_queries
+                       if 'cis_classsectionsecondaryhighschool' in q['sql']
+                       or 'cis_hsadministratorposition' in q['sql']
+                       or 'cis_campus' in q['sql'])
+
+        self.assertEqual(queries(1), queries(5))
+
+
+for _name in [n for n in dir(HSAdminPeriodReminderTests) if n.startswith('test_')]:
+    setattr(HSAdminReminderSecondaryTests, _name, None)
