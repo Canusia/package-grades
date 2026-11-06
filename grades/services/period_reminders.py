@@ -89,28 +89,92 @@ def needs_reminder(status_row, period, today=None):
     return (today - status_row.last_notified_on).days >= freq
 
 
-def sections_pending_for_period(period, today=None):
+def _hs_admin_lookup(configs):
+    """``(highschool_id, campus) -> [users]`` of HS admins who can submit
+    grades, or ``None`` when admins are not reminded at all.
+
+    Admins are reminded when HS admin grade entry is Edit and an admin
+    subject is configured. Their position at the school must be Active and
+    hold Can submit grades for the course's campus (#15). On a cis without
+    per-school permissions nothing is looked up.
+    """
+    from ..settings.class_section_grades import hs_admin_grade_access_value
+    if hs_admin_grade_access_value(configs.get('hs_admin_grade_entry')) != 'edit':
+        return None
+    if not configs.get('hsadmin_grades_due_subject'):
+        return None
+    try:
+        from cis.models.highschool_administrator import (
+            HSAdminPerm, HSAdministratorPosition)
+    except ImportError:  # cis before per-school HS admin permissions
+        return None
+
+    cache = {}
+
+    def lookup(highschool_id, campus):
+        key = (highschool_id, getattr(campus, 'pk', campus))
+        if key not in cache:
+            positions = HSAdministratorPosition.objects.filter(
+                highschool_id=highschool_id,
+            ).with_perm(HSAdminPerm.SUBMIT_GRADES, campus).select_related(
+                'hsadmin__user').distinct()
+            users = []
+            for position in positions:
+                user = position.hsadmin.user
+                if _valid_email(user.email) and user not in users:
+                    users.append(user)
+            cache[key] = users
+        return cache[key]
+    return lookup
+
+
+def _valid_email(address):
+    try:
+        validate_email(address)
+    except Exception:
+        return False
+    return True
+
+
+def _section_recipients(section, admin_lookup):
+    """``[(user, kind)]`` for one section: its teacher ('teacher') when they
+    have an email address, then the permitted HS admins ('hsadmin')."""
+    recipients = []
+    if section.teacher_id and _valid_email(section.teacher.user.email):
+        recipients.append((section.teacher.user, 'teacher'))
+    if admin_lookup is not None and section.highschool_id:
+        campus = getattr(section.course, 'campus', None)
+        for user in admin_lookup(section.highschool_id, campus):
+            recipients.append((user, 'hsadmin'))
+    return recipients
+
+
+def sections_pending_for_period(period, today=None, admin_lookup=None):
     """``[(section, status_row)]`` for sections that should be reminded now.
 
     Only active sections (status 'A', as the CE summary counts them) on the
-    period's own term, and only those whose teacher has an email address.
+    period's own term, and only those with someone to remind: a teacher with
+    an email address, or (with ``admin_lookup``) a permitted HS admin.
     """
+    from django.db.models import Q
     from cis.models.section import ClassSection
 
     today = today or datetime.date.today()
 
+    has_teacher = Q(teacher__isnull=False) & ~Q(teacher__user__email='') & Q(
+        teacher__user__email__isnull=False)
+    who = has_teacher
+    if admin_lookup is not None:
+        who = has_teacher | Q(highschool__isnull=False)
+
     candidates = ClassSection.objects.filter(
-        term_id=period.term_id,
-        status='A',
-        teacher__isnull=False,
-    ).exclude(
-        teacher__user__email=''
-    ).exclude(
-        teacher__user__email__isnull=True
-    ).select_related('teacher__user')
+        who, term_id=period.term_id, status='A',
+    ).select_related('teacher__user', 'course')
 
     pending = []
     for section in candidates:
+        if admin_lookup is not None and not _section_recipients(section, admin_lookup):
+            continue
         # A missing row means "never submitted, never notified"; creating it
         # with the model defaults puts it in precisely that state.
         status_row, _ = SectionPeriodStatus.objects.get_or_create(
@@ -122,28 +186,28 @@ def sections_pending_for_period(period, today=None):
     return pending
 
 
-def _send_period_reminder(period, teacher_user, num_sections, configs, today):
-    """Render and queue one teacher's reminder for one period.
+def _send_period_reminder(period, user, num_sections, configs, today,
+                          kind='teacher'):
+    """Render and queue one reminder for one period.
 
-    Uses the existing ``grades_due_subject`` / ``grades_due_email`` templates;
-    grading periods add ``{{grading_period}}`` and ``{{due_date}}`` to the
-    context rather than introducing a second pair of settings fields.
+    Teachers get ``grades_due_subject`` / ``grades_due_email``; HS admins
+    (#15) get ``hsadmin_grades_due_subject`` / ``hsadmin_grades_due_email``.
     """
-    email_subject = configs.get('grades_due_subject')
-    email_text = configs.get('grades_due_email')
+    prefix = 'hsadmin_' if kind == 'hsadmin' else ''
+    email_subject = configs.get(f'{prefix}grades_due_subject')
+    email_text = configs.get(f'{prefix}grades_due_email')
 
-    teacher_email = teacher_user.email
-    try:
-        validate_email(teacher_email)
-    except Exception:
+    if not _valid_email(user.email):
         return False
 
-    send_to = [teacher_email]
+    send_to = [user.email]
 
     message = Template(email_text or '')
     context = Context({
-        'teacher_first_name': teacher_user.first_name,
-        'teacher_last_name': teacher_user.last_name,
+        'teacher_first_name': user.first_name,
+        'teacher_last_name': user.last_name,
+        'admin_first_name': user.first_name,
+        'admin_last_name': user.last_name,
         'number_of_sections_pending_grades': num_sections,
         'term': str(period.term),
         'grading_period': period.name,
@@ -173,24 +237,31 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
     if not email_subject:
         return None
 
+    admin_lookup = _hs_admin_lookup(configs)
     periods = list(periods_due_for_reminder(today))
 
     summary_lines = [
         f'{len(periods)} grading period(s) in reminder window on '
         f'{today.strftime("%m/%d/%Y")}'
     ]
-    detailed_log = {'teachers_notified': [], 'periods': []}
-    total_notified = 0
+    detailed_log = {'teachers_notified': [], 'hs_admins_notified': [],
+                    'periods': []}
+    total_teachers = total_admins = 0
 
     for period in periods:
-        pending = sections_pending_for_period(period, today)
+        pending = sections_pending_for_period(period, today, admin_lookup)
 
-        # Group by teacher: one email per (teacher, period), like the
-        # single-window reminder sends one email per teacher.
-        by_teacher = {}
+        # One email per (person, period) covering all their sections. A
+        # person who teaches any of them gets the teacher email, even when
+        # they are also an admin at the school.
+        by_user = {}
         for section, status_row in pending:
-            by_teacher.setdefault(section.teacher.user, []).append(
-                (section, status_row))
+            for user, kind in _section_recipients(section, admin_lookup):
+                entry = by_user.setdefault(user.pk, {'user': user, 'kind': kind, 'rows': []})
+                if kind == 'teacher':
+                    entry['kind'] = 'teacher'
+                if (section, status_row) not in entry['rows']:
+                    entry['rows'].append((section, status_row))
 
         period_log = {
             'period': period.name,
@@ -198,38 +269,56 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
             'due_on': period.due_on.strftime('%m/%d/%Y'),
             'sections_pending': len(pending),
             'teachers_notified': 0,
+            'hs_admins_notified': 0,
         }
 
-        for teacher_user, rows in by_teacher.items():
+        notified_sections = {}
+        for entry in by_user.values():
+            user, kind, rows = entry['user'], entry['kind'], entry['rows']
             sent = _send_period_reminder(
-                period, teacher_user, len(rows), configs, today)
+                period, user, len(rows), configs, today, kind=kind)
             if not sent:
                 continue
 
-            period_log['teachers_notified'] += 1
-            total_notified += 1
-            detailed_log['teachers_notified'].append({
-                'teacher__user__first_name': teacher_user.first_name,
-                'teacher__user__last_name': teacher_user.last_name,
-                'teacher__user__email': teacher_user.email,
-                'num_sections': len(rows),
-                'grading_period': period.name,
-            })
-
+            if kind == 'teacher':
+                period_log['teachers_notified'] += 1
+                total_teachers += 1
+                detailed_log['teachers_notified'].append({
+                    'teacher__user__first_name': user.first_name,
+                    'teacher__user__last_name': user.last_name,
+                    'teacher__user__email': user.email,
+                    'num_sections': len(rows),
+                    'grading_period': period.name,
+                })
+            else:
+                period_log['hs_admins_notified'] += 1
+                total_admins += 1
+                detailed_log['hs_admins_notified'].append({
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email': user.email,
+                    'num_sections': len(rows),
+                    'grading_period': period.name,
+                })
             for section, status_row in rows:
-                status_row.last_notified_on = today
-                status_row.save(update_fields=['last_notified_on'])
+                notified_sections[section.pk] = (section, status_row)
 
-                section.add_note(
-                    note=f'Sent grades due reminder email for {period.name}'
-                )
+        for section, status_row in notified_sections.values():
+            status_row.last_notified_on = today
+            status_row.save(update_fields=['last_notified_on'])
+
+            section.add_note(
+                note=f'Sent grades due reminder email for {period.name}'
+            )
 
         summary_lines.append(
             f'{period.term} - {period.name}: {len(pending)} section(s) '
-            f'pending, {period_log["teachers_notified"]} teacher(s) notified'
+            f'pending, {period_log["teachers_notified"]} teacher(s), '
+            f'{period_log["hs_admins_notified"]} HS admin(s) notified'
         )
         detailed_log['periods'].append(period_log)
 
-    summary_lines.append(f'Notified {total_notified} teacher(s) in total')
+    summary_lines.append(
+        f'Notified {total_teachers} teacher(s) and {total_admins} HS admin(s) in total')
 
     return ('\r\n'.join(summary_lines), detailed_log)

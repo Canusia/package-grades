@@ -57,6 +57,13 @@ NEW_KEY_DEFAULTS = {
     'hs_admin_grade_entry': 'none',
     'student_grade_columns': student_table.DEFAULT,
     'grades_intro': '',
+    # #15: HS admins who can submit grades get their own reminder.
+    'hsadmin_grades_due_subject': 'Grades are due',
+    'hsadmin_grades_due_email': (
+        'Hello {{admin_first_name}},<br><br>'
+        '{{number_of_sections_pending_grades}} class section(s) at your school still '
+        'need {{grading_period}} grades for {{term}}. Grades are due {{due_date}}.<br><br>'
+        'Please sign in to enter them.'),
 }
 
 # Removed in v1.0.0: grading periods own every date (spec §1).
@@ -163,6 +170,22 @@ class SettingForm(forms.Form):
         validators=[validate_html_short_code],
         help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{term}}, {{number_of_sections_pending_grades}}, {{grading_period}}, {{due_date}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_due\')" >See Preview</a>',
         label="Grades Due Email Message")
+
+    hsadmin_grades_due_subject = forms.CharField(
+        max_length=None,
+        required=False,
+        help_text=('Sent to high school administrators who hold Can submit grades at the '
+                   "section's school, when High School Admin Grade Access is Edit. "
+                   'Leave blank to send them no reminder.'),
+        label="HS Admin Grades Due Email Subject")
+
+    hsadmin_grades_due_email = forms.CharField(
+        max_length=None,
+        required=False,
+        widget=forms.Textarea,
+        validators=[validate_html_short_code],
+        help_text='Customize with {{admin_first_name}}, {{admin_last_name}}, {{term}}, {{number_of_sections_pending_grades}}, {{grading_period}}, {{due_date}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'hsadmin_grades_due\')" >See Preview</a>',
+        label="HS Admin Grades Due Email Message")
    
     grades_intro = forms.CharField(
         max_length=None,
@@ -410,10 +433,13 @@ class SettingForm(forms.Form):
                 })
 
         email_settings = self.from_db()
-        if field_name in ['grades_due', 'grades_submitted_email' ]:
+        if field_name in ['grades_due', 'hsadmin_grades_due', 'grades_submitted_email' ]:
             if field_name == 'grades_due':
                 subject = email_settings.get('grades_due_subject')
                 email = email_settings.get('grades_due_email')
+            if field_name == 'hsadmin_grades_due':
+                subject = email_settings.get('hsadmin_grades_due_subject')
+                email = email_settings.get('hsadmin_grades_due_email')
             if field_name == 'grades_submitted_email':
                 subject = email_settings.get('grades_submitted_email_subject')
                 email = email_settings.get('grades_submitted_email')
@@ -423,6 +449,10 @@ class SettingForm(forms.Form):
                 'student_first_name': "John",
                 'teacher_first_name': "John",
                 'teacher_last_name': "Smith",
+                'admin_first_name': "Jane",
+                'admin_last_name': "Doe",
+                'grading_period': "Midterm",
+                'due_date': "12/15/2018",
                 'instructor_first_name': "John",
                 'instructor_last_name': "Smith",
                 'course': "ACC 101",
@@ -491,6 +521,8 @@ class SettingForm(forms.Form):
             'cron': self.cleaned_data.get('cron', ''),
             'grades_due_subject': self.cleaned_data['grades_due_subject'],
             'grades_due_email': self.cleaned_data['grades_due_email'],
+            'hsadmin_grades_due_subject': self.cleaned_data.get('hsadmin_grades_due_subject', ''),
+            'hsadmin_grades_due_email': self.cleaned_data.get('hsadmin_grades_due_email', ''),
 
             'grades_submitted_email': self.cleaned_data['grades_submitted_email'],
             'grades_submitted_email_subject': self.cleaned_data['grades_submitted_email_subject'],
