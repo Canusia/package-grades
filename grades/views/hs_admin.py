@@ -72,21 +72,25 @@ def _hs_admin_context(request):
 
 
 def admin_scope(request, section):
-    """``(allowed, highschool_ids)`` for the requesting HS admin on ``section``.
+    """``(on_section, highschool_ids)`` for the requesting HS admin.
 
-    Not allowed unless they administer one of the section's schools (primary
-    or secondary). ``highschool_ids`` is ``None`` -- the whole class -- for an
-    admin of the primary school, else their schools' ids: whose students they
-    see and may grade.
+    ``on_section``: one of their schools is the section's primary or a
+    secondary school. ``highschool_ids`` follows highschool_admin's
+    ``roster_school_ids``: only when they reach the section as a SECONDARY
+    school (and not the primary) are they narrowed -- to their schools that
+    are on the section, so a student from an unrelated school CE-enrolled
+    into it stays hidden. Otherwise ``None``, the whole class as before
+    cis#154: a primary-school admin, or one who sees the class page through
+    another highschool_admin rule (e.g. hosted_or_own_students).
     """
     _, highschools = _hs_admin_context(request)
     admin_ids = set(highschools.values_list('id', flat=True))
-    section_ids = section_highschool_ids(section)
-    if not admin_ids.intersection(section_ids):
-        return False, []
+    on_section = admin_ids.intersection(section_highschool_ids(section))
+    if not on_section:
+        return False, None
     if section.highschool_id in admin_ids:
         return True, None
-    return True, sorted(admin_ids, key=str)
+    return True, sorted(on_section, key=str)
 
 
 def class_section_grade(request, record_id):

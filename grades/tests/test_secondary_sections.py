@@ -270,6 +270,46 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
         self.assertEqual(regs, [self.mine])
         self.assertFalse(ctx['grid']['can_submit'])
 
+    def test_tab_for_admin_off_the_section_keeps_whole_class(self):
+        # highschool_admin may show the class page through another rule
+        # (hosted_or_own_students); the tab then lists the class as before #154.
+        from ..tabs import hs_admin_grades_tab
+        request = RequestFactory().get('/')
+        request.user = self.admin
+        with self._schools([f.highschool()]):
+            ctx = hs_admin_grades_tab(request, self.section)
+        regs = {row['registration'] for row in ctx['grid']['rows']}
+        self.assertEqual(regs, {self.mine, self.theirs})
+        self.assertTrue(ctx['grid']['can_submit'])
+
+    def test_narrowed_to_schools_on_the_section(self):
+        # The admin also runs a school that is not on the section; a student
+        # of that school CE-enrolled into the section stays hidden.
+        stray_hs = f.highschool()
+        f.registration(self.section, highschool_obj=stray_hs, last_name='Strayberg')
+        with self._schools([self.secondary_hs, stray_hs]):
+            resp = self.client.get(self._url())
+            csv = self.client.get(self._url('?action=download_grades')).content.decode()
+        self.assertContains(resp, 'Secondaryson')
+        self.assertNotContains(resp, 'Strayberg')
+        self.assertNotContains(resp, 'Primarydottir')
+        self.assertNotIn('Strayberg', csv)
+
+    def test_admin_scope_values(self):
+        from ..views.hs_admin import admin_scope
+        request = RequestFactory().get('/')
+        request.user = self.admin
+        stray_hs = f.highschool()
+        cases = [
+            ([self.primary_hs], (True, None)),
+            ([self.primary_hs, self.secondary_hs], (True, None)),
+            ([self.secondary_hs, stray_hs], (True, [self.secondary_hs.id])),
+            ([stray_hs], (False, None)),
+        ]
+        for schools, expected in cases:
+            with self._schools(schools):
+                self.assertEqual(admin_scope(request, self.section), expected, schools)
+
     # -- dashboard message -----------------------------------------------
 
     def test_dashboard_message_counts_secondary_sections(self):
