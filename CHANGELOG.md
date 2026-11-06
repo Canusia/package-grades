@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+
+- Secondary teachers/high schools (package-cis#154): grade entry stays primary; secondary-school HS admins grade only their own students (drafts; no class submit); reminders reach permitted secondary-school admins.
+
 ## 1.1.0
 
 ### Added
