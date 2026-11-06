@@ -18,11 +18,12 @@ def summarize(period, highschool_ids=None, campus_ids=None, user=None):
     sections whose course campus that CE user may process (same campus path
     as the grade reports)."""
     from cis.models.section import ClassSection
-    from ..compat import scope_to_user_campuses
+    from ..compat import scope_to_user_campuses, sections_at_highschools_q
     sections = ClassSection.objects.filter(term_id=period.term_id, status='A', teacher__isnull=False)
     sections = scope_to_user_campuses(sections, user, 'course__campus')
     if highschool_ids:
-        sections = sections.filter(highschool_id__in=highschool_ids)
+        # Primary or secondary school (cis#154); rows stay by primary teacher.
+        sections = sections.filter(sections_at_highschools_q(highschool_ids))
     if campus_ids:
         sections = sections.filter(course__campus_id__in=campus_ids)
     sections = list(sections.select_related('teacher__user', 'highschool', 'course__cohort'))

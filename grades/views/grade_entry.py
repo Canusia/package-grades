@@ -37,18 +37,29 @@ def _note(request, text, ok=True):
                          'list-group-item-success' if ok else 'list-group-item-danger')
 
 
+def _posted_registration_ids(request):
+    """Every ``form-N-student_id`` in the POST, as strings."""
+    return {value for key, value in request.POST.items()
+            if key.startswith('form-') and key.endswith('-student_id')}
+
+
 def handle_grade_post(request, section, *, redirect_url, force_period=None, on_date=None,
-                      on_saved=None):
+                      on_saved=None, highschool_ids=None):
     """Save (draft/autosave) or submit grades for one period of ``section``.
 
     The period comes from POST ``period``. Without ``force_period`` (CE) the
     period must be editable on ``on_date`` (today by default): open, not
     submitted, roster gate passing. The caller must already have authorized
     the section.
+
+    ``highschool_ids`` (cis#154, a secondary-school HS admin): only those
+    schools' students may be graded -- a POST naming anyone else is refused
+    whole, nothing saved -- and the period is never submitted (it is saved as
+    a draft), since submitting covers the whole class.
     """
     back = safe_next(request, redirect_url)
     period = force_period or resolve_period(section, request.POST.get('period'), on_date=on_date)
-    draft = DRAFT in request.POST.get('save_grade', '')
+    draft = DRAFT in request.POST.get('save_grade', '') or highschool_ids is not None
     autosave = is_autosave(request)
 
     if period is None:
@@ -66,7 +77,14 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
         _note(request, reason, ok=False)
         return redirect(back)
 
-    registrations = list(students_for_grades(section))
+    registrations = list(students_for_grades(section, highschool_ids))
+    if highschool_ids is not None and not _posted_registration_ids(request) <= {
+            str(reg.id) for reg in registrations}:
+        reason = 'You can only enter grades for students at your school.'
+        if autosave:
+            return JsonResponse({'ok': False, 'error': reason}, status=403)
+        _note(request, reason, ok=False)
+        return redirect(back)
     formset = build_formset(section, period, registrations,
                             grades_for(section, period, registrations),
                             user=request.user, data=request.POST)
@@ -93,6 +111,9 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
         return JsonResponse({'ok': True, 'status': status})
     if keep_submitted:
         _note(request, f'{period.name} grades updated; they remain submitted.')
+    elif highschool_ids is not None:
+        _note(request, 'Your students\' grades have been saved. The instructor or the '
+                       'class\'s primary school submits the class\'s grades.')
     else:
         _note(request, 'Your grades have been saved as a draft.' if draft
               else f'Your {period.name} grades have been submitted.')

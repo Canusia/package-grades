@@ -258,3 +258,34 @@ def portal_text(role):
             value = getattr(importlib.import_module(module), attr).from_db()
             return value if isinstance(value, dict) else {}
     return {}
+
+
+# -- secondary high schools on a class section (cis#154) -------------------
+
+def has_secondary_sections():
+    """True when cis has secondary teachers / high schools on a section."""
+    return has_module('cis.models.section_secondary')
+
+
+def sections_at_highschools_q(highschools, prefix=''):
+    """Q for sections offered at any of ``highschools`` (objects, ids or a
+    queryset), as primary or -- on a cis with #154 -- secondary school."""
+    if has_secondary_sections():
+        from cis.models.section_secondary import highschools_q
+        return highschools_q(highschools, prefix=prefix)
+    from django.db.models import Q
+    return Q(**{f'{prefix}highschool__in': highschools})
+
+
+def section_highschool_ids(section):
+    """The primary school's id (if any) then the secondary schools' ids.
+
+    Reads the links' ``highschool_id`` rather than ``all_highschools()`` so a
+    prefetch of ``secondary_highschool_links`` is enough -- no HighSchool
+    query per section. A cis without #154 gives the primary alone.
+    """
+    ids = [section.highschool_id] if section.highschool_id else []
+    if hasattr(section, 'all_highschools'):
+        ids += [link.highschool_id for link in section.secondary_highschool_links.all()
+                if link.highschool_id not in ids]
+    return ids

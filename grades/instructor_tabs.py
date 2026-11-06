@@ -13,7 +13,12 @@ instructor_class_section_tabs = (
 
 
 def _has_periods(user, section):
+    """The primary teacher's tab, when the term has grading periods. A
+    secondary teacher (cis#154) sees the section but never its grades."""
     from .services.periods import periods_for_section
+    if not (section.teacher_id and user is not None
+            and section.teacher.user_id == getattr(user, 'pk', None)):
+        return False
     return bool(periods_for_section(section))
 
 

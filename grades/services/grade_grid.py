@@ -52,14 +52,18 @@ def build_formset(section, period, registrations, marks, user=None, data=None):
 
 
 def build_grid(section, *, post_url, next_url, allow_edit=True, force_period=None,
-               on_date=None, autosave=True):
+               on_date=None, autosave=True, highschool_ids=None):
     """The grid context. ``autosave=False`` (CE editing on an instructor's
     behalf) renders the form without the roster's XHR draft auto-save, so every
-    write is an explicit, audited submit."""
+    write is an explicit, audited submit.
+
+    ``highschool_ids`` (cis#154, a secondary-school HS admin) lists only those
+    schools' students and offers no Submit: submitting marks the whole class's
+    period, which is the instructor's or the primary school's to do."""
     from ..settings.class_section_grades import class_section_grades
     today = on_date or datetime.date.today()
     periods = periods_for_section(section)
-    registrations = list(students_for_grades(section).select_related(
+    registrations = list(students_for_grades(section, highschool_ids).select_related(
         'student__user', 'student__highschool', 'highschool'))
     columns = get_columns()
     statuses = statuses_for(section, periods)
@@ -109,6 +113,7 @@ def build_grid(section, *, post_url, next_url, allow_edit=True, force_period=Non
         'message': message, 'roster_gate_ok': gate_ok, 'roster_gate_message': gate_message,
         'post_url': post_url, 'next_url': next_url, 'has_periods': bool(periods),
         'autosave': autosave,
+        'can_submit': highschool_ids is None,
         'editable_submitted': bool(editable is not None and statuses.get(editable.id)
                                    and statuses[editable.id].status == 'submitted'),
     }

@@ -20,6 +20,12 @@ It runs before anything else in this view, so it gates the POST exactly as it
 gates the render -- a HS admin cannot enter grades for a section at a school
 they do not administer.
 
+cis#154 widens it to a section's secondary high schools: an admin of a
+secondary school (and none of the primary) gets in, but the grid, the CSV, the
+roster PDF and any POST cover only students of their own schools, and they
+cannot submit the class's period. A primary-school admin keeps the whole class.
+See ``admin_scope``.
+
 Ahead of even that, the whole view 404s unless CE has set
 ``hs_admin_grade_entry`` to view or edit (default none), and a POST 404s
 unless it is edit, so the URL is not a way round the setting.
@@ -36,7 +42,9 @@ from cis.settings.highschool_admin_portal import (
 
 from ..services.gating import hs_admin_can_view_grades, hs_admin_grade_entry_enabled
 from ..services.grade_csv import grades_csv_response
+from ..compat import section_highschool_ids
 from ..services.grade_grid import build_grid
+from ..services.roster import roster_pdf_response
 from .grade_entry import handle_grade_post
 
 
@@ -63,6 +71,24 @@ def _hs_admin_context(request):
     return menu_data, get_user_highschools(request)
 
 
+def admin_scope(request, section):
+    """``(allowed, highschool_ids)`` for the requesting HS admin on ``section``.
+
+    Not allowed unless they administer one of the section's schools (primary
+    or secondary). ``highschool_ids`` is ``None`` -- the whole class -- for an
+    admin of the primary school, else their schools' ids: whose students they
+    see and may grade.
+    """
+    _, highschools = _hs_admin_context(request)
+    admin_ids = set(highschools.values_list('id', flat=True))
+    section_ids = section_highschool_ids(section)
+    if not admin_ids.intersection(section_ids):
+        return False, []
+    if section.highschool_id in admin_ids:
+        return True, None
+    return True, sorted(admin_ids, key=str)
+
+
 def class_section_grade(request, record_id):
     # CE's access setting: view lets the admin see the grid (and the roster
     # PDF); only edit lets a POST through.
@@ -70,31 +96,33 @@ def class_section_grade(request, record_id):
         raise Http404('High school admin grade access is not enabled.')
     can_edit = hs_admin_grade_entry_enabled()
 
-    menu_data, highschools = _hs_admin_context(request)
+    menu_data, _highschools = _hs_admin_context(request)
     menu = draw_menu(menu_data, 'classes', '', 'highschool_admin')
 
     section = get_object_or_404(ClassSection, pk=record_id)
 
-    # AUTHORIZATION. Copied from highschool_admin/views/classes.py:class_section.
-    # Placed above every other branch so it gates the POST as well as the GET.
-    if section.highschool is None or (
-        section.highschool.id not in highschools.values_list('id', flat=True)
-    ):
+    # AUTHORIZATION. From highschool_admin/views/classes.py:class_section,
+    # widened to secondary schools (cis#154) with the roster scoped to the
+    # admin's schools. Placed above every other branch so it gates the POST
+    # as well as the GET.
+    allowed, scope = admin_scope(request, section)
+    if not allowed:
         return HttpResponseNotFound('Class section not found')
 
     here = reverse('grades_highschool_admin:class_section_grade', args=[section.id])
     tab = reverse('highschool_admin:class_section', args=[section.id]) + '#grades'
     if request.GET.get('action') == 'download_roster_pdf':
-        return section.download_roster_pdf()
+        return roster_pdf_response(section, scope)
     if request.GET.get('action') == 'download_grades':
-        return grades_csv_response(section)
+        return grades_csv_response(section, scope)
     if request.method == 'POST':
         if not can_edit:
             raise Http404('High school admin grade entry is not enabled.')
-        return handle_grade_post(request, section, redirect_url=tab)
+        return handle_grade_post(request, section, redirect_url=tab, highschool_ids=scope)
     return render(request, 'grades/hs_admin/class_section_grade.html', {
         'menu': menu, 'class_section': section,
         'intro': portal_lang(request).from_db().get('class_blurb', ''),
         'grades_download_url': here + '?action=download_grades',
-        'grid': build_grid(section, post_url=here, next_url=here, allow_edit=can_edit),
+        'grid': build_grid(section, post_url=here, next_url=here, allow_edit=can_edit,
+                           highschool_ids=scope),
     })

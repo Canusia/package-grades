@@ -9,8 +9,10 @@ from .csv_safe import safe_cell
 from .grade_grid import build_grid
 
 
-def grades_csv_response(section):
-    grid = build_grid(section, post_url='', next_url='', allow_edit=False)
+def grades_csv_response(section, highschool_ids=None):
+    """``highschool_ids``: only those schools' students (see build_grid)."""
+    grid = build_grid(section, post_url='', next_url='', allow_edit=False,
+                      highschool_ids=highschool_ids)
     response = HttpResponse(content_type='text/csv')
     filename = slugify(f'{section} grades') or 'grades'
     response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'

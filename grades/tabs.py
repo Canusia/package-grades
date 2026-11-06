@@ -127,11 +127,16 @@ def hs_admin_grades_tab(request, record):
     from django.urls import reverse
     from .services.gating import hs_admin_grade_entry_enabled
     from .services.grade_grid import build_grid
+    from .views.hs_admin import admin_scope
 
+    # A secondary-school admin (cis#154) sees only their schools' students;
+    # outside every school of the section, nobody.
+    _allowed, scope = admin_scope(request, record)
     post_url = reverse('grades_highschool_admin:class_section_grade', args=[record.id])
     next_url = reverse('highschool_admin:class_section', args=[record.id]) + '#grades'
     return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
-                               allow_edit=hs_admin_grade_entry_enabled()),
+                               allow_edit=hs_admin_grade_entry_enabled(),
+                               highschool_ids=scope),
             'grades_download_url': post_url + '?action=download_grades', 'in_tab': True}
 
 

@@ -29,9 +29,12 @@ def _teacher_sections(request):
 
 def _hs_admin_sections(request):
     from cis.models.section import ClassSection
+    from .compat import sections_at_highschools_q
     from .views.hs_admin import _hs_admin_context
     _, highschools = _hs_admin_context(request)
-    return list(ClassSection.objects.filter(highschool__in=highschools, status='A'))
+    # Primary or secondary school (cis#154).
+    return list(ClassSection.objects.filter(
+        sections_at_highschools_q(highschools), status='A'))
 
 
 @page_message('instructor', 'grades')
