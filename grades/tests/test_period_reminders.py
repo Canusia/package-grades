@@ -16,6 +16,7 @@ notified.
 See docs/superpowers/specs/2026-08-02-grades-grading-periods-design.md
 """
 from datetime import date, timedelta
+from unittest import mock
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
@@ -348,7 +349,9 @@ class PeriodReminderTests(TestCase):
                 period=period, class_section=section)
             self.assertEqual(row.last_notified_on, TODAY)
 
-    def test_no_subject_configured_returns_none_and_sends_nothing(self):
+    def test_no_subject_configured_sends_teachers_nothing(self):
+        # v1.3.0 (#17): HS admins with Can submit grades are always reminded,
+        # so the run still happens; teachers without a subject get nothing.
         setting = Setting.objects.get(key=GRADES_KEY)
         value = dict(setting.value)
         value['grades_due_subject'] = ''
@@ -358,5 +361,18 @@ class PeriodReminderTests(TestCase):
         self._section()
         self._period()
 
-        self.assertIsNone(self._run())
+        summary, log = self._run()
+        self.assertEqual(log['teachers_notified'], [])
+        self.assertEqual(Message.objects.count(), 0)
+
+    def test_no_subject_and_no_admin_lookup_returns_none(self):
+        # A cis that cannot grant Can submit grades: nothing to send at all.
+        from ..services import gating
+        setting = Setting.objects.get(key=GRADES_KEY)
+        setting.value = {**setting.value, 'grades_due_subject': ''}
+        setting.save()
+        self._section()
+        self._period()
+        with mock.patch.object(gating, '_submit_grades_api', return_value=None):
+            self.assertIsNone(self._run())
         self.assertEqual(Message.objects.count(), 0)
