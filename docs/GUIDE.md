@@ -106,9 +106,13 @@ Grading periods belong to a **term**. They decide when grades can be entered, wh
 
 **The *Can submit grades* rule** (v1.3.0, #16):
 
-An HS admin can enter and submit grades for a class when they have an **Active** position at a school on the class. That means the primary school, or a secondary school per cis#154. The position must hold **Can submit grades** (`HSAdminPerm.SUBMIT_GRADES`) for the course's campus. A grant with no campus counts on every campus.
+An HS admin can enter grades for a class when they have an **Active** position holding **Can submit grades** (`HSAdminPerm.SUBMIT_GRADES`), for the course's campus, at the school they **act for** on that class:
+- the **primary school**, when it is one of their schools: they get the whole class and can submit it;
+- otherwise their own **secondary school** (cis#154): they get only their own students, and save them as a draft.
 
-The check is `services/gating.hs_admin_can_submit_grades(user, section)`. Every HS admin page and POST uses it, including the autosave request.
+A grant at a secondary school never unlocks the whole class. A grant with no campus counts on every campus. A course with no campus accepts only grants with no campus.
+
+The check is `services/gating.hs_admin_can_submit_grades(user, section, highschool_ids)`, with the acting schools from `views/hs_admin.acting_schools`. Every HS admin page and POST uses it, including the autosave request, and so does the dashboard message.
 
 - CE grants the permission on the admin's position at the high school.
 - The setting page shows how many active positions hold it (section 8).
@@ -333,7 +337,7 @@ All reports run in the background and produce a CSV. On a multi-campus host ever
 *For CE.* New in v1.3.0 (#14). One row per **person** who still owes grades for the chosen periods. It's also a **Bulk Messages data source**.
 
 - **Filters:**
-  - Term(s)*, Grading Period(s) (blank means every period).
+  - Term(s)*, Grading Period(s) (blank means every period that has opened).
   - Status: Not Started / Draft (both by default).
   - High School(s).
   - **Recipients:**
@@ -345,7 +349,8 @@ All reports run in the background and produce a CSV. On a multi-campus host ever
   - Grading Period(s), Class Count, Classes
   - Statuses (each class and period)
   - Graded, Not Graded: interim periods count the period mark, the final period counts the registration grade.
-- **Left out:** classes already submitted, secondary instructors, classes with no instructor or no instructor email (for the instructor part), and admins without the permission.
+- **Left out:** classes already submitted, secondary instructors, classes with no instructor or no valid instructor email (for the instructor part), and admins without the permission. HS admins are those of the class's **primary** school. Reminders also reach permitted secondary-school admins, who grade their own students (section 9).
+- **One row per person and role** in the CSV. In the data source, someone who is both an instructor and an HS admin is one recipient: Role "Instructor, HS Admin", with all their classes.
 - **Data source:**
   - In Bulk Messages, pick this report as the recipient list and set the same filters.
   - Merge fields: `{{FirstName}}`, `{{LastName}}`, `{{Role}}`, `{{GradingPeriods}}`, `{{ClassCount}}`, `{{Classes}}`, `{{Statuses}}`, `{{Graded}}`, `{{NotGraded}}`.

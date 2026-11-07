@@ -21,23 +21,6 @@ from ..services import student_table
 
 YES_NO = [('Yes', 'Yes'), ('No', 'No')]
 
-# Retired in v1.3.0 (#16, #17): every HS admin sees grades and Can submit
-# grades decides entry. Kept so hs_admin_grade_access_value() still reads an
-# old stored value for any outside caller.
-HS_ADMIN_GRADE_ACCESS = [
-    ('none', 'No access'),
-    ('view', 'View grades only'),
-    ('edit', 'View and enter grades'),
-]
-_LEGACY_HS_ADMIN_GRADE_ACCESS = {'Yes': 'edit', 'No': 'none'}
-
-
-def hs_admin_grade_access_value(value):
-    """'none', 'view' or 'edit' for a stored hs_admin_grade_entry value."""
-    value = _LEGACY_HS_ADMIN_GRADE_ACCESS.get(value, value)
-    return value if value in dict(HS_ADMIN_GRADE_ACCESS) else 'none'
-
-
 # Keys added for the Grades Configuration Workbook (#2). from_db() fills these
 # only when absent, so a row saved before they existed keeps behaving as it did.
 NEW_KEY_DEFAULTS = {

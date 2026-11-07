@@ -509,3 +509,54 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
 for _name in [n for n in vars(HSAdminPeriodGradeEntryTests) if n.startswith('test_')]:
     setattr(HSAdminGradeEntrySettingTests, _name, None)
 del _name
+
+
+class SubmitGradesCampusTests(TestCase):
+    """#16: a campus-specific grant counts only for courses on that campus; an
+    all-campus grant counts everywhere; a course with no campus takes only an
+    all-campus grant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.conf import settings as dj
+        from cis.models.course import Campus
+        prefix = getattr(dj, 'CAMPUS_CODE_PREFIX', 'T')
+        cls.campus_a = Campus.objects.create(name='Campus A', code=f'{prefix}-GA')
+        cls.campus_b = Campus.objects.create(name='Campus B', code=f'{prefix}-GB')
+        term = f.term()
+        cls.hs = f.highschool()
+        cls.section = f.section(term, f.teacher(), highschool_obj=cls.hs)
+        cls.user = User.objects.create_user(
+            username='campus_grant', email='campus_grant@example.com', password='x')
+
+    def _on(self, campus):
+        self.section.course.campus = campus
+        self.section.course.save()
+        self.section.refresh_from_db()
+
+    def _can(self):
+        from ..services.gating import hs_admin_can_submit_grades
+        return hs_admin_can_submit_grades(self.user, self.section)
+
+    def test_grant_for_another_campus_does_not_count(self):
+        f.grant_submit_grades(self.user, self.hs, campus=self.campus_a)
+        self._on(self.campus_b)
+        self.assertFalse(self._can())
+        self._on(self.campus_a)
+        self.assertTrue(self._can())
+
+    def test_all_campus_grant_counts_everywhere(self):
+        f.grant_submit_grades(self.user, self.hs)
+        for campus in (self.campus_a, self.campus_b, None):
+            self._on(campus)
+            self.assertTrue(self._can(), campus)
+
+    def test_course_without_campus_takes_only_all_campus_grants(self):
+        f.grant_submit_grades(self.user, self.hs, campus=self.campus_a)
+        self._on(None)
+        self.assertFalse(self._can())
+
+    def test_dashboard_grants_match(self):
+        from ..services.gating import submit_grade_grants
+        f.grant_submit_grades(self.user, self.hs, campus=self.campus_a)
+        self.assertEqual(submit_grade_grants(self.user), {(self.hs.id, self.campus_a.id)})

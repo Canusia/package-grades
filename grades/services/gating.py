@@ -85,29 +85,37 @@ def submit_grades_positions(campus=None):
     return model.objects.filter(hsadmin__user__is_active=True).with_perm(codename, campus)
 
 
-def hs_admin_can_submit_grades(user, section):
-    """May this HS admin enter and submit grades for ``section``? (#16)
+def hs_admin_can_submit_grades(user, section, highschool_ids=None):
+    """May this HS admin enter grades for ``section``? (#16)
 
     Every HS admin of a school on the section sees its grades. Entering them
-    needs an Active position at one of those schools (the primary, or a
-    secondary school per cis#154) holding Can submit grades for the course's
-    campus. A secondary-school admin still only saves their own students'
-    grades as a draft (views.grade_entry)."""
+    needs an Active position holding Can submit grades for the course's
+    campus at the school the admin acts for: ``highschool_ids``, which the
+    views pass from ``admin_scope`` -- the primary school for a whole-class
+    admin, or their own secondary schools (cis#154), whose admins only save
+    their own students' grades as a draft. Default: the primary school. A
+    grant at a secondary school never unlocks the whole class."""
     if user is None or not getattr(user, 'is_authenticated', False) or section is None:
+        return False
+    if highschool_ids is None:
+        highschool_ids = [section.highschool_id] if section.highschool_id else []
+    highschool_ids = [h for h in highschool_ids if h]
+    if not highschool_ids:
         return False
     positions = submit_grades_positions(getattr(section.course, 'campus_id', None))
     if positions is None:
         return False
-    from ..compat import section_highschool_ids
-    return positions.filter(
-        hsadmin__user=user, highschool_id__in=list(section_highschool_ids(section)),
-    ).exists()
+    return positions.filter(hsadmin__user=user, highschool_id__in=highschool_ids).exists()
 
 
 def submit_grade_grants(user):
     """``{(highschool_id, campus_id)}`` for which ``user`` holds Can submit
     grades through an Active position (campus ``None`` = every campus).
-    Empty on a cis that cannot grant it."""
+    Empty on a cis that cannot grant it.
+
+    Mirrors cis ``HSAdministratorPositionQuerySet.with_perm`` (Active
+    position, the permission's codename and content type) on the grant rows,
+    so one query covers every school and campus; keep the two in step."""
     api = _submit_grades_api()
     if api is None or user is None or not getattr(user, 'is_authenticated', False):
         return set()

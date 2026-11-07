@@ -179,6 +179,35 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
         self.assertContains(resp, 'Secondaryson')
         self.assertContains(resp, 'Primarydottir')
 
+    def _revoke_at(self, school):
+        from cis.models.highschool_administrator import HSPositionPermission
+        HSPositionPermission.objects.filter(
+            position__hsadmin__user=self.admin, position__highschool=school).delete()
+
+    def test_secondary_grant_does_not_unlock_the_whole_class(self):
+        # Review finding (#16): an admin of the primary school without the
+        # grant there, holding it only at the secondary, stays read-only.
+        self._revoke_at(self.primary_hs)
+        with self._schools([self.primary_hs, self.secondary_hs]):
+            resp = self.client.get(self._url())
+            self.assertNotContains(resp, 'Submit Mid 1 Grades')
+            self.assertNotContains(resp, "Save Grades as 'Draft'")
+            self.assertEqual(self._post([self.theirs], save='Submit').status_code, 404)
+            self.assertEqual(self._post([self.mine]).status_code, 404)
+        self.assertFalse(PeriodGrade.objects.exists())
+        self.assertFalse(SectionPeriodStatus.objects.filter(status='submitted').exists())
+
+    def test_secondary_admin_with_grant_at_own_school_drafts(self):
+        self._revoke_at(self.primary_hs)
+        with self._schools([self.secondary_hs]):
+            self.assertEqual(self._post([self.mine]).status_code, 302)
+        self.assertTrue(PeriodGrade.objects.filter(registration=self.mine).exists())
+
+    def test_primary_grant_alone_is_enough_for_the_primary_admin(self):
+        self._revoke_at(self.secondary_hs)
+        with self._schools([self.primary_hs]):
+            self.assertContains(self.client.get(self._url()), 'Submit Mid 1 Grades')
+
     def test_unrelated_school_404(self):
         with self._schools([f.highschool()]):
             self.assertEqual(self.client.get(self._url()).status_code, 404)

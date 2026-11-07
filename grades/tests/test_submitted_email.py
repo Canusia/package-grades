@@ -136,3 +136,64 @@ class SubmittedEmailTests(GradesTestCase):
         self.section.grade_status = 'submitted'
         self.section.save()
         self.assertEqual(self._to(), [])
+
+
+class SubmittedEmailCEAndDebugTests(SubmittedEmailTests):
+    """Review follow-ups: CE edit on behalf, Debug mode, mail failures."""
+
+    def _ce_post(self, draft=False):
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from ..views.grade_entry import handle_grade_post
+        request = RequestFactory().post('/', {
+            'period': str(self.mid1.id),
+            'form-TOTAL_FORMS': '1', 'form-INITIAL_FORMS': '1',
+            'form-MIN_NUM_FORMS': '0', 'form-MAX_NUM_FORMS': '1000',
+            'form-0-student': 'x', 'form-0-student_id': str(self.reg.id),
+            'form-0-grade': 'A',
+            'save_grade': "Save Grades as 'Draft'" if draft else 'Submit'})
+        request.user = self.ce_user
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        return handle_grade_post(request, self.section, redirect_url='/', force_period=self.mid1)
+
+    def setUp(self):
+        super().setUp()
+        self.ce_user = User.objects.create_user(
+            username=f'ce{User.objects.count()}', email='ce_staff@example.com', password='x',
+            first_name='Cee', last_name='Staff')
+
+    def test_ce_submitting_on_behalf_sends_once_naming_ce(self):
+        self._ce_post()
+        self.assertEqual(self._to(), sorted(
+            ['ce_staff@example.com', self.teacher.user.email, 'withperm@example.com']))
+        self.assertIn('Cee Staff submitted Mid 1', Message.objects.first().email.body)
+
+    def test_ce_editing_a_submitted_period_sends_nothing(self):
+        set_status(self.section, self.mid1, 'submitted')
+        self._ce_post()
+        self.assertEqual(self._to(), [])
+
+    def test_debug_mode_goes_to_the_debug_list_only(self):
+        f.grades_setting(**SETTINGS, is_active='Debug', debug_email_list='qa@example.com')
+        send_grades_submitted(self.section, self.mid1, self.admin_with)
+        self.assertEqual(self._to(), ['qa@example.com'])
+
+    def test_a_mail_error_does_not_fail_the_submit(self):
+        from unittest import mock
+        from ..services import submitted_email
+        with mock.patch.object(submitted_email, 'send_grades_mail', side_effect=RuntimeError):
+            response = self._submit(self.mid1)
+        self.assertEqual(response.status_code, 302)
+        from ..services.periods import get_status
+        self.assertEqual(get_status(self.section, self.mid1), 'submitted')
+
+    # The parent's tests are not re-run here.
+    test_recipients_are_submitter_instructor_and_permitted_primary_admins = None
+    test_no_secondary_teacher_or_secondary_school_admin = None
+    test_interim_period_submission_is_confirmed = None
+    test_a_draft_sends_nothing = None
+    test_already_submitted_sends_nothing = None
+    test_section_without_instructor_does_not_fail = None
+    test_switch_off_leaves_only_copy_to = None
+    test_saving_grade_status_alone_sends_nothing = None

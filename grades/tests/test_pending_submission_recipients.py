@@ -100,6 +100,25 @@ class PendingSubmissionRecipientsTests(GradesTestCase):
         self.assertEqual(sorted(r['email'][0] for r in rows),
                          sorted([self.tess.user.email, 'pat@example.com']))
 
+    def test_data_source_merges_a_person_in_both_roles(self):
+        # Tess is also an admin at the school: one mailer row with every class.
+        f.grant_submit_grades(self.tess.user, self.hs)
+        report = pending_submission_recipients()
+        rows = report.get_recipients(self._data(recipients=['both']))  # mailer sends lists
+        tess = next(r for r in rows if r['email'] == [self.tess.user.email])
+        self.assertEqual(tess['Role'], 'Instructor, HS Admin')
+        self.assertEqual(tess['ClassCount'], 3)  # a, b and the class with no instructor
+        # The CSV keeps one row per role.
+        roles = [r.role for r in report.people(self._data(recipients='both'))
+                 if r.email == self.tess.user.email]
+        self.assertEqual(sorted(roles), ['HS Admin', 'Instructor'])
+
+    def test_blank_periods_mean_opened_periods_only(self):
+        f.period(self.term, 'Final', date.today() + timedelta(days=30),
+                 date.today() + timedelta(days=40), 2, is_final=True)
+        rows = self._people(periods=[], recipients='both')
+        self.assertTrue(all('Final' not in r.periods for r in rows))
+
     def test_csv(self):
         saved = {}
 

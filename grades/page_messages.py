@@ -27,14 +27,18 @@ def _teacher_sections(request):
     return list(ClassSection.objects.filter(teacher__user=request.user, status='A'))
 
 
-def _hs_admin_sections(request):
+def _hs_admin_sections(request, highschools=None):
     from cis.models.section import ClassSection
-    from .compat import sections_at_highschools_q
-    from .views.hs_admin import _hs_admin_context
-    _, highschools = _hs_admin_context(request)
+    from .compat import has_secondary_sections, sections_at_highschools_q
+    if highschools is None:
+        from .views.hs_admin import _hs_admin_context
+        _, highschools = _hs_admin_context(request)
     # Primary or secondary school (cis#154).
-    return list(ClassSection.objects.filter(
-        sections_at_highschools_q(highschools), status='A'))
+    sections = ClassSection.objects.filter(
+        sections_at_highschools_q(highschools), status='A').select_related('course')
+    if has_secondary_sections():
+        sections = sections.prefetch_related('secondary_highschool_links')
+    return list(sections)
 
 
 @page_message('instructor', 'grades')
@@ -48,20 +52,28 @@ def instructor_dashboard(request):
 
 
 def _hs_admin_submit_sections(request):
-    """The admin's sections they may enter grades for (#16): positions at the
-    section's school holding Can submit grades for the course's campus."""
+    """The admin's sections they may enter grades for (#16): Can submit
+    grades held, for the course's campus, at the school they act for -- the
+    primary school when it is one of theirs, else their own secondary
+    schools (as views.hs_admin.admin_scope decides)."""
     from .services.gating import submit_grade_grants
     from .compat import section_highschool_ids
+    from .views.hs_admin import _hs_admin_context
     # (school, campus) pairs this admin holds the grant for; campus None is
     # an all-campus grant. One query, then a check per section in memory.
     grants = submit_grade_grants(request.user)
     if not grants:
         return []
+    _, highschools = _hs_admin_context(request)
+    admin_ids = set(highschools.values_list('id', flat=True))
     out = []
-    for section in _hs_admin_sections(request):
+    for section in _hs_admin_sections(request, highschools):
+        if section.highschool_id in admin_ids:
+            acting = [section.highschool_id]
+        else:
+            acting = [h for h in section_highschool_ids(section) if h in admin_ids]
         campus_id = getattr(section.course, 'campus_id', None)
-        if any((hs, None) in grants or (hs, campus_id) in grants
-               for hs in section_highschool_ids(section)):
+        if any((hs, None) in grants or (hs, campus_id) in grants for hs in acting):
             out.append(section)
     return out
 

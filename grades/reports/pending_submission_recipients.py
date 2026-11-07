@@ -27,7 +27,11 @@ from crispy_forms.layout import Layout, Submit
 from cis.backends.storage_backend import PrivateMediaStorage
 from cis.models.section import ClassSection
 from cis.models.term import Term
-from cis.reports.datasource_mixin import ReportDataSourceMixin
+try:
+    from cis.reports.datasource_mixin import ReportDataSourceMixin
+except ImportError:  # pragma: no cover - an in-tree cis without report data sources
+    class ReportDataSourceMixin:
+        use_as_datasource = False
 
 from ..compat import (
     apply_term_tree, current_campus_only, expand_term_ids, picker_queryset,
@@ -65,6 +69,15 @@ def _list(value):
     return [str(getattr(value, 'pk', value))]
 
 
+def _valid(address):
+    from django.core.validators import validate_email
+    try:
+        validate_email(address)
+    except Exception:
+        return False
+    return True
+
+
 def _class_label(section):
     course = section.course.name or str(section.course)
     return f'{course} {section.section_number} ({section.class_number})'
@@ -97,7 +110,7 @@ class pending_submission_recipients(ReportDataSourceMixin, forms.Form):
         queryset=GradingPeriod.objects.none(), required=False, label='Grading Period(s)',
         widget=PeriodSelectMultiple,
         help_text='Only periods of the selected term(s) and their sub-terms can be picked; '
-                  'leave blank to include every one')
+                  'leave blank for every period that has opened')
     status = forms.MultipleChoiceField(
         choices=STATUS_CHOICES, required=False, label='Status',
         initial=[NOT_STARTED, 'saved'],
@@ -158,6 +171,9 @@ class pending_submission_recipients(ReportDataSourceMixin, forms.Form):
         chosen = _list(data.get('periods'))
         if chosen:
             periods = periods.filter(pk__in=chosen)
+        else:
+            # Nobody owes grades for a period that has not opened yet.
+            periods = periods.filter(opens_on__lte=datetime.date.today())
         by_term = {}
         for period in periods.order_by('sequence'):
             by_term.setdefault(period.term_id, []).append(period)
@@ -180,7 +196,9 @@ class pending_submission_recipients(ReportDataSourceMixin, forms.Form):
     def _counts(self, pending):
         """``{(section_id, period_id): (graded, not_graded)}`` over the
         grade-entry roster statuses: the period grade for an interim period,
-        the registration grade for the final one."""
+        the registration grade for the final one. Two queries, then one pass
+        per class's own registrations."""
+        from collections import defaultdict
         from cis.models.section import StudentRegistration
         from ..models import PeriodGrade
         if not pending:
@@ -190,30 +208,33 @@ class pending_submission_recipients(ReportDataSourceMixin, forms.Form):
         statuses = roster_statuses()  # [] means every status
         if statuses:
             regs = regs.filter(status__in=statuses)
-        regs = list(regs.values_list('id', 'class_section_id', 'grade'))
+        by_section = defaultdict(list)
+        for reg_id, section_id, grade in regs.values_list('id', 'class_section_id', 'grade'):
+            by_section[section_id].append((reg_id, grade))
         interim = {p.pk for _s, p, _k in pending if not p.is_final}
         period_grades = {}
         if interim:
             for reg_id, period_id, grade in PeriodGrade.objects.filter(
-                    period_id__in=interim, registration_id__in=[r[0] for r in regs],
+                    period_id__in=interim,
+                    registration__class_section_id__in=section_ids,
             ).values_list('registration_id', 'period_id', 'grade'):
                 period_grades[(reg_id, period_id)] = grade
         counts = {}
         for section, period, _key in pending:
-            graded = total = 0
-            for reg_id, section_id, final_grade in regs:
-                if section_id != section.id:
-                    continue
-                total += 1
+            rows = by_section.get(section.id, [])
+            graded = 0
+            for reg_id, final_grade in rows:
                 grade = final_grade if period.is_final else period_grades.get((reg_id, period.pk))
                 if (grade or '').strip() not in BLANK_GRADES:
                     graded += 1
-            counts[(section.id, period.pk)] = (graded, total - graded)
+            counts[(section.id, period.pk)] = (graded, len(rows) - graded)
         return counts
 
-    def people(self, data, user=None):
-        """One entry per person: ``SimpleNamespace`` with the datasource
-        attributes, in role then name order."""
+    def people(self, data, user=None, merge_roles=False):
+        """One entry per person and role (``merge_roles``: per person, for
+        the data source, which keeps one row per email): a
+        ``SimpleNamespace`` with the datasource attributes, in role then
+        name order."""
         pending = self.pending(data, user)
         counts = self._counts(pending)
         choice = data.get('recipients') or INSTRUCTORS
@@ -225,12 +246,15 @@ class pending_submission_recipients(ReportDataSourceMixin, forms.Form):
         people = {}
 
         def add(person, role, section, period, key):
-            entry = people.setdefault((role, person.pk), {
-                'user': person, 'role': role, 'items': []})
-            entry['items'].append((section, period, key))
+            entry = people.setdefault(person.pk if merge_roles else (role, person.pk), {
+                'user': person, 'roles': [], 'items': []})
+            if role not in entry['roles']:
+                entry['roles'].append(role)
+            if (section, period, key) not in entry['items']:
+                entry['items'].append((section, period, key))
 
         for section, period, key in pending:
-            if want_instructors and section.teacher_id and section.teacher.user.email:
+            if want_instructors and section.teacher_id and _valid(section.teacher.user.email):
                 add(section.teacher.user, 'instructor', section, period, key)
             if lookup is not None and section.highschool_id:
                 for admin in lookup(section.highschool_id,
@@ -254,18 +278,22 @@ class pending_submission_recipients(ReportDataSourceMixin, forms.Form):
                 not_graded += left
             rows.append(SimpleNamespace(
                 first_name=person.first_name, last_name=person.last_name,
-                email=person.email, role=ROLE_LABELS[entry['role']],
+                email=person.email,
+                role=', '.join(ROLE_LABELS[r] for r in sorted(
+                    entry['roles'], key=lambda r: r != 'instructor')),
                 periods=', '.join(periods), class_count=len(classes),
                 classes=', '.join(classes), statuses='; '.join(statuses),
                 graded=graded, not_graded=not_graded,
             ))
-        rows.sort(key=lambda r: (r.role != 'Instructor', r.last_name.lower(),
+        rows.sort(key=lambda r: (not r.role.startswith('Instructor'), r.last_name.lower(),
                                  r.first_name.lower()))
         return rows
 
     def recipient_queryset(self, data):
         user = self.request.user if self.request is not None else None
-        return self.people(data, user)
+        # One row per email in the mailer: someone who is both an instructor
+        # and an HS admin gets every class they owe in one row.
+        return self.people(data, user, merge_roles=True)
 
     def run(self, task, data):
         rows = self.people(data, user=getattr(task, 'created_by', None))

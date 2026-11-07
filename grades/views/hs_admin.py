@@ -95,6 +95,15 @@ def admin_scope(request, section):
     return True, sorted(on_section, key=str)
 
 
+def acting_schools(section, scope):
+    """The schools an admin acts for on ``section``: their own secondary
+    schools when ``admin_scope`` narrowed them, else the primary school.
+    Can submit grades must be held at one of these (#16)."""
+    if scope is not None:
+        return list(scope)
+    return [section.highschool_id] if section.highschool_id else []
+
+
 def hs_admin_grades_intro():
     """The HS admin Grades intro; blank uses the instructor one (#17)."""
     from ..settings.class_section_grades import class_section_grades
@@ -117,7 +126,7 @@ def class_section_grade(request, record_id):
         return HttpResponseNotFound('Class section not found')
     # Everyone here sees the grid (and the roster PDF and CSV); only an admin
     # holding Can submit grades may POST (#16).
-    can_edit = hs_admin_can_submit_grades(request.user, section)
+    can_edit = hs_admin_can_submit_grades(request.user, section, acting_schools(section, scope))
 
     here = reverse('grades_highschool_admin:class_section_grade', args=[section.id])
     tab = reverse('highschool_admin:class_section', args=[section.id]) + '#grades'

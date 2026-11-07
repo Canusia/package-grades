@@ -1,4 +1,6 @@
 """The grade POST shared by every grade page (instructor, HS admin, CE)."""
+import logging
+
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import redirect
@@ -11,6 +13,8 @@ from ..services.periods import (
 from ..services.roster import students_for_grades
 
 DRAFT = 'Draft'
+
+logger = logging.getLogger(__name__)
 
 
 def is_autosave(request):
@@ -108,8 +112,14 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
     set_status(section, period, status)
     if status == 'submitted' and not was_submitted:
         # Every period's submission is confirmed, naming who submitted (#17).
+        # The grades are saved by now: a broken template or mailer must not
+        # turn the submit into an error page.
         from ..services.submitted_email import send_grades_submitted
-        send_grades_submitted(section, period, request.user)
+        try:
+            send_grades_submitted(section, period, request.user)
+        except Exception:
+            logger.exception('grades: could not send the submitted confirmation '
+                             'for section %s, period %s', section.pk, period.pk)
     if on_saved is not None:
         on_saved(period, status == 'saved')
     if autosave:

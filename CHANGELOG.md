@@ -9,8 +9,11 @@
   removed. Every HS admin of a school on the class sees its grades read-only
   (Grades tab, grade page, CSV, roster PDF, Grades by Grading Period). Entering
   and submitting needs an Active position at the school holding Can submit
-  grades for the course's campus. On a cis without per-school permissions
-  (before 0.1.15a) no HS admin enters grades.
+  grades for the course's campus at the school they act for: the primary
+  school for the whole class, or their own secondary school (cis#154, drafts
+  for their own students). A grant at a secondary school never unlocks the
+  whole class. On a cis without per-school permissions (before 0.1.15a) no HS
+  admin enters grades.
 - **#17: HS admin reminders are always on** for admins holding Can submit
   grades. A blank HS admin subject or message no longer turns them off: the
   fields are required and a blank saved value falls back to the default.
@@ -20,7 +23,8 @@
   grades. Secondary instructors and secondary-school admins are not included.
   The ClassSection `grade_status` signal that sent it (final period, instructor
   only) is removed, so changing `grade_status` outside grade entry sends
-  nothing. A class with no instructor no longer errors.
+  nothing. A class with no instructor no longer errors, and a mail error no
+  longer turns a successful submit into an error page.
 
 ### Added
 
@@ -33,7 +37,8 @@
   `{{grading_period}}` and `{{term}}` in the grades-submitted email.
 - #14: report **Grades: Pending Submission Recipients**: one row per
   instructor and/or HS admin (Recipients choice, default Instructors) who still
-  owes grades for the chosen grading periods; also a Bulk Messages data source.
+  owes grades for the chosen grading periods (blank = every period that has
+  opened); also a Bulk Messages data source, one recipient per person.
 - `services.gating`: `hs_admin_can_submit_grades(user, section)`,
   `submit_grades_supported()`, `submit_grades_positions()`,
   `submit_grade_grants()`, `submit_grades_admins_lookup()`.
