@@ -108,7 +108,7 @@ class SecondaryTeacherGradesTests(_NoLoginHistory, GradesTestCase):
 class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
     @classmethod
     def setUpTestData(cls):
-        f.grades_setting(hs_admin_grade_entry='Yes')
+        f.grades_setting()
         today = date.today()
         cls.primary_hs = f.highschool()
         cls.secondary_hs = f.highschool()
@@ -123,6 +123,7 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
         cls.admin = get_user_model().objects.create_user(
             username='hsa2@example.com', email='hsa2@example.com', password='x')
         cls.admin.groups.add(Group.objects.get_or_create(name='highschool_admin')[0])
+        f.grant_submit_grades(cls.admin, cls.primary_hs, cls.secondary_hs)  # #16
 
     def setUp(self):
         self.client.force_login(self.admin)

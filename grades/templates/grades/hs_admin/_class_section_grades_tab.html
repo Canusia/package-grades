@@ -1,3 +1,4 @@
 {% load static %}
+{% if grades_intro %}<div class="mb-3">{{ grades_intro|safe }}</div>{% endif %}
 {% include 'grades/partials/_grade_grid.html' %}
 <script src="{% static 'grades/js/grade_roster.js' %}"></script>

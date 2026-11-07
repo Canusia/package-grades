@@ -47,9 +47,25 @@ def instructor_dashboard(request):
     return _messages(_teacher_sections(request), tile_id='id_tile_grades')
 
 
+def _hs_admin_submit_sections(request):
+    """The admin's sections they may enter grades for (#16): positions at the
+    section's school holding Can submit grades for the course's campus."""
+    from .services.gating import submit_grade_grants
+    from .compat import section_highschool_ids
+    # (school, campus) pairs this admin holds the grant for; campus None is
+    # an all-campus grant. One query, then a check per section in memory.
+    grants = submit_grade_grants(request.user)
+    if not grants:
+        return []
+    out = []
+    for section in _hs_admin_sections(request):
+        campus_id = getattr(section.course, 'campus_id', None)
+        if any((hs, None) in grants or (hs, campus_id) in grants
+               for hs in section_highschool_ids(section)):
+            out.append(section)
+    return out
+
+
 @page_message('highschool_admin', 'dashboard')
 def hs_admin_dashboard(request):
-    from .services.gating import hs_admin_grade_entry_enabled
-    if not hs_admin_grade_entry_enabled():
-        return []
-    return _messages(_hs_admin_sections(request))
+    return _messages(_hs_admin_submit_sections(request))

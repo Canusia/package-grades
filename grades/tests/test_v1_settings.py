@@ -21,7 +21,8 @@ class SettingsV1Tests(GradesTestCase):
     def test_retired_keys_listed(self):
         self.assertEqual(set(RETIRED_KEYS), {
             'terms', 'start_date', 'end_date', 'reminder_dates', 'grades_open',
-            'grades_closed', 'viewable_from_date', 'viewable_end_date'})
+            'grades_closed', 'viewable_from_date', 'viewable_end_date',
+            'hs_admin_grade_entry'})
 
     def test_from_db_defaults_grades_intro(self):
         f.grades_setting()

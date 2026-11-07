@@ -101,10 +101,15 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
 
     # CE (force_period) edits a submitted period in place: it stays submitted.
     # Reopening is the separate reopen action.
-    keep_submitted = force_period is not None and get_status(section, period) == 'submitted'
+    was_submitted = get_status(section, period) == 'submitted'
+    keep_submitted = force_period is not None and was_submitted
     status = 'submitted' if keep_submitted or not draft else 'saved'
     formset.save()
     set_status(section, period, status)
+    if status == 'submitted' and not was_submitted:
+        # Every period's submission is confirmed, naming who submitted (#17).
+        from ..services.submitted_email import send_grades_submitted
+        send_grades_submitted(section, period, request.user)
     if on_saved is not None:
         on_saved(period, status == 'saved')
     if autosave:

@@ -72,6 +72,15 @@ _REPORTS_BASE = [
         'categories': ['Classes'],
         'available_for': ['ce'],
     },
+    {
+        'name': 'pending_submission_recipients',
+        'title': 'Grades: Pending Submission Recipients',
+        'description': 'One row per instructor and/or high school admin who still needs to '
+                       'submit grades for the chosen grading periods; also a Bulk Messages '
+                       'data source',
+        'categories': ['Classes'],
+        'available_for': ['ce'],
+    },
 ]
 
 

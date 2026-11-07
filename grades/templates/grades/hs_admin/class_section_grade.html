@@ -26,7 +26,7 @@
         </div></div>
       </div>
     </div>
-    <div class="col-md-8">{% include 'grades/partials/_grade_grid.html' %}</div>
+    <div class="col-md-8">{% if grades_intro %}<div class="mb-3">{{ grades_intro|safe }}</div>{% endif %}{% include 'grades/partials/_grade_grid.html' %}</div>
   </div>
 </main>
 <script src="{% static 'grades/js/grade_roster.js' %}"></script>

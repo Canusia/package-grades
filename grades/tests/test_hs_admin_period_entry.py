@@ -14,6 +14,7 @@ See docs/superpowers/specs/2026-08-02-grades-grading-periods-design.md
 """
 import json
 import unittest
+from unittest import mock
 from datetime import date, timedelta
 
 from django.conf import settings as django_settings
@@ -34,7 +35,7 @@ from two_step.models import TwoStep
 from cis.models.course import Cohort, Course
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
-    HSAdministrator, HSAdministratorPosition, HSPosition,
+    HSAdminPerm, HSAdministrator, HSAdministratorPosition, HSPosition,
 )
 from cis.models.section import ClassSection, StudentRegistration
 from cis.models.settings import Setting
@@ -78,7 +79,6 @@ class HSAdminPeriodGradeEntryTests(TestCase):
             defaults={'value': {
                 'grades': 'A,B,C',
                 'registration_status': ['applied'],
-                'hs_admin_grade_entry': 'Yes',
             }},
         )
 
@@ -93,9 +93,11 @@ class HSAdminPeriodGradeEntryTests(TestCase):
         cls.user = user
         hsadmin = HSAdministrator.objects.create(user=user)
         position = HSPosition.objects.create(name='Counselor')
-        HSAdministratorPosition.objects.create(
+        cls.role = HSAdministratorPosition.objects.create(
             hsadmin=hsadmin, highschool=cls.hs_own, position=position,
             status='Active')
+        # #16: entry needs Can submit grades on the admin's position.
+        cls.role.grant(HSAdminPerm.SUBMIT_GRADES)
 
         teacher_user = User.objects.create_user(
             username='hs_grade_teacher', email='hs_grade_teacher@example.com',
@@ -331,45 +333,63 @@ _needs_tab_registry = unittest.skipUnless(
 
 
 class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
-    """#3: HS admin grade entry is behind a setting, default No.
+    """#16/#17: every HS admin of the school sees grades; only those holding
+    Can submit grades enter them. (v1.3.0 replaced the none/view/edit setting.)
 
     Inherits the fixtures; the parent's tests are not re-run (see below).
     """
 
-    def _set(self, value):
-        setting = Setting.objects.get(key=GRADES_KEY)
-        if value is None:
-            setting.value.pop('hs_admin_grade_entry', None)
-        else:
-            setting.value['hs_admin_grade_entry'] = value
-        setting.save()
+    def _revoke(self):
+        from cis.models.highschool_administrator import HSPositionPermission
+        HSPositionPermission.objects.filter(position=self.role).delete()
 
     def _page(self, section):
         return self.client.get(reverse(
             'highschool_admin:class_section', kwargs={'record_id': section.id}))
 
-    def test_default_is_off(self):
-        from ..services.gating import hs_admin_grade_entry_enabled
-        self._set(None)
-        self.assertFalse(hs_admin_grade_entry_enabled())
+    def test_deprecated_access_helpers(self):
+        from ..services.gating import (
+            hs_admin_can_view_grades, hs_admin_grade_access, hs_admin_grade_entry_enabled)
+        self.assertTrue(hs_admin_can_view_grades())
+        self.assertTrue(hs_admin_grade_entry_enabled())
+        self.assertEqual(hs_admin_grade_access(), 'edit')
 
-    def test_off_get_is_not_found(self):
-        self._set('No')
+    def test_can_submit_grades_rule(self):
+        from ..services.gating import hs_admin_can_submit_grades
         section, _ = self._section()
-        self.assertEqual(self.client.get(self._url(section)).status_code, 404)
+        self.assertTrue(hs_admin_can_submit_grades(self.user, section))
+        other, _ = self._section(highschool=self.hs_other)
+        self.assertFalse(hs_admin_can_submit_grades(self.user, other))
+        self._revoke()
+        self.assertFalse(hs_admin_can_submit_grades(self.user, section))
 
-    def test_off_post_does_not_write(self):
-        self._set('No')
-        section, registration = self._section()
-        response = self._post(section, registration, grade='C')
-        self.assertEqual(response.status_code, 404)
-        registration.refresh_from_db()
-        self.assertEqual(registration.grade, 'A')
+    def test_inactive_position_cannot_submit(self):
+        from ..services.gating import hs_admin_can_submit_grades
+        section, _ = self._section()
+        self.role.status = 'Inactive'
+        self.role.save()
+        self.assertFalse(hs_admin_can_submit_grades(self.user, section))
 
-    def test_off_autosave_does_not_write(self):
-        self._set('No')
+    def test_grant_at_another_school_does_not_count(self):
+        from ..services.gating import hs_admin_can_submit_grades
+        self._revoke()
+        position = HSPosition.objects.create(name='Elsewhere')
+        elsewhere = HSAdministratorPosition.objects.create(
+            hsadmin=self.role.hsadmin, highschool=self.hs_other, position=position,
+            status='Active')
+        elsewhere.grant(HSAdminPerm.SUBMIT_GRADES)
+        section, _ = self._section()
+        self.assertFalse(hs_admin_can_submit_grades(self.user, section))
+
+    def test_cis_without_the_permission_nobody_enters(self):
+        from ..services import gating
         section, registration = self._section()
-        self.assertEqual(self._autosave(section, registration, 'C').status_code, 404)
+        self._period()
+        with mock.patch.object(gating, '_submit_grades_api', return_value=None):
+            response = self.client.get(self._url(section))
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, 'name="period"')
+            self.assertEqual(self._post(section, registration, grade='C').status_code, 404)
         registration.refresh_from_db()
         self.assertEqual(registration.grade, 'A')
 
@@ -396,28 +416,17 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertContains(response, 'No grading periods are set up')
 
     @_needs_tab_registry
-    def test_off_no_tab(self):
-        self._set('No')
+    def test_every_admin_sees_the_tab(self):
+        self._revoke()
         section, _ = self._section()
         response = self._page(section)
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn('grades', response.context['detail_tabs'])
-        self.assertNotContains(response, self._url(section))
+        self.assertIn('grades', response.context['detail_tabs'])
 
+    # -- without the permission: read-only --------------------------------
 
-    # -- view only (#3: none / view / edit) --------------------------------
-
-    def test_legacy_yes_no_map_to_edit_and_none(self):
-        from ..services.gating import hs_admin_grade_access
-        self._set('Yes')
-        self.assertEqual(hs_admin_grade_access(), 'edit')
-        self._set('No')
-        self.assertEqual(hs_admin_grade_access(), 'none')
-        self._set('junk')
-        self.assertEqual(hs_admin_grade_access(), 'none')
-
-    def test_view_get_renders_read_only(self):
-        self._set('view')
+    def test_without_permission_get_renders_read_only(self):
+        self._revoke()
         section, _ = self._section()
         self._period()
         response = self.client.get(self._url(section))
@@ -425,8 +434,8 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertContains(response, 'Midterm')
         self.assertNotContains(response, 'name="period"')
 
-    def test_view_post_and_autosave_do_not_write(self):
-        self._set('view')
+    def test_without_permission_post_and_autosave_do_not_write(self):
+        self._revoke()
         section, registration = self._section()
         self._period()
         self.assertEqual(self._post(section, registration, grade='C').status_code, 404)
@@ -435,8 +444,8 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertEqual(registration.grade, 'A')
 
     @_needs_tab_registry
-    def test_view_tab_shows_read_only_grid(self):
-        self._set('view')
+    def test_without_permission_tab_shows_read_only_grid(self):
+        self._revoke()
         section, _ = self._section()
         self._period()
         response = self._page(section)
@@ -445,15 +454,13 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertNotContains(response, 'name="period"')
 
     @_needs_tab_registry
-    def test_edit_tab_is_editable(self):
-        self._set('edit')
+    def test_with_permission_tab_is_editable(self):
         section, _ = self._section()
         self._period()
         self.assertContains(self._page(section), 'name="period"')
 
-
-    def test_view_can_download_grades_csv(self):
-        self._set('view')
+    def test_without_permission_can_download_grades_csv(self):
+        self._revoke()
         section, _ = self._section()
         self._period()
         response = self.client.get(self._url(section) + '?action=download_grades')
@@ -461,21 +468,38 @@ class HSAdminGradeEntrySettingTests(HSAdminPeriodGradeEntryTests):
         self.assertEqual(response['Content-Type'], 'text/csv')
         self.assertTrue(response.content.decode().splitlines()[0].endswith('Midterm'))
 
-    def test_off_download_grades_is_not_found(self):
-        self._set('No')
+    # -- HS admin intro (#17) ----------------------------------------------
+
+    def _intro(self, **values):
+        setting = Setting.objects.get(key=GRADES_KEY)
+        setting.value.update(values)
+        setting.save()
+
+    def test_hs_admin_intro_shown_on_grade_page(self):
+        self._intro(grades_intro='Instructor intro', hsadmin_grades_intro='School intro')
         section, _ = self._section()
-        self.assertEqual(
-            self.client.get(self._url(section) + '?action=download_grades').status_code, 404)
+        response = self.client.get(self._url(section))
+        self.assertContains(response, 'School intro')
+        self.assertNotContains(response, 'Instructor intro')
+
+    def test_blank_hs_admin_intro_uses_grades_intro(self):
+        self._intro(grades_intro='Instructor intro', hsadmin_grades_intro='')
+        section, _ = self._section()
+        self.assertContains(self.client.get(self._url(section)), 'Instructor intro')
+
+    @_needs_tab_registry
+    def test_hs_admin_intro_shown_on_tab(self):
+        self._intro(hsadmin_grades_intro='School tab intro')
+        section, _ = self._section()
+        self.assertContains(self._page(section), 'School tab intro')
 
     def test_download_grades_other_school_is_not_found(self):
-        self._set('view')
         section, _ = self._section(highschool=self.hs_other)
         self.assertEqual(
             self.client.get(self._url(section) + '?action=download_grades').status_code, 404)
 
     @_needs_tab_registry
     def test_tab_shows_download_grades(self):
-        self._set('view')
         section, _ = self._section()
         self._period()
         self.assertContains(self._page(section), '?action=download_grades')

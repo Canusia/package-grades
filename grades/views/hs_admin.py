@@ -26,9 +26,11 @@ roster PDF and any POST cover only students of their own schools, and they
 cannot submit the class's period. A primary-school admin keeps the whole class.
 See ``admin_scope``.
 
-Ahead of even that, the whole view 404s unless CE has set
-``hs_admin_grade_entry`` to view or edit (default none), and a POST 404s
-unless it is edit, so the URL is not a way round the setting.
+Every HS admin of a school on the section sees its grades. Entering and
+submitting them needs a position at one of those schools holding Can submit
+grades for the course's campus (#16, ``hs_admin_can_submit_grades``); a POST
+from anyone else 404s, so the URL is not a way round the permission. On a cis
+that cannot grant the permission nobody enters grades here.
 """
 from django.shortcuts import render, get_object_or_404
 from django.http import Http404, HttpResponseNotFound
@@ -40,7 +42,7 @@ from cis.settings.highschool_admin_portal import (
     highschool_admin_portal as portal_lang,
 )
 
-from ..services.gating import hs_admin_can_view_grades, hs_admin_grade_entry_enabled
+from ..services.gating import hs_admin_can_submit_grades
 from ..services.grade_csv import grades_csv_response
 from ..compat import section_highschool_ids
 from ..services.grade_grid import build_grid
@@ -93,13 +95,14 @@ def admin_scope(request, section):
     return True, sorted(on_section, key=str)
 
 
-def class_section_grade(request, record_id):
-    # CE's access setting: view lets the admin see the grid (and the roster
-    # PDF); only edit lets a POST through.
-    if not hs_admin_can_view_grades():
-        raise Http404('High school admin grade access is not enabled.')
-    can_edit = hs_admin_grade_entry_enabled()
+def hs_admin_grades_intro():
+    """The HS admin Grades intro; blank uses the instructor one (#17)."""
+    from ..settings.class_section_grades import class_section_grades
+    values = class_section_grades.from_db()
+    return values.get('hsadmin_grades_intro') or values.get('grades_intro') or ''
 
+
+def class_section_grade(request, record_id):
     menu_data, _highschools = _hs_admin_context(request)
     menu = draw_menu(menu_data, 'classes', '', 'highschool_admin')
 
@@ -112,6 +115,9 @@ def class_section_grade(request, record_id):
     allowed, scope = admin_scope(request, section)
     if not allowed:
         return HttpResponseNotFound('Class section not found')
+    # Everyone here sees the grid (and the roster PDF and CSV); only an admin
+    # holding Can submit grades may POST (#16).
+    can_edit = hs_admin_can_submit_grades(request.user, section)
 
     here = reverse('grades_highschool_admin:class_section_grade', args=[section.id])
     tab = reverse('highschool_admin:class_section', args=[section.id]) + '#grades'
@@ -121,11 +127,12 @@ def class_section_grade(request, record_id):
         return grades_csv_response(section, scope)
     if request.method == 'POST':
         if not can_edit:
-            raise Http404('High school admin grade entry is not enabled.')
+            raise Http404('You do not have permission to enter grades for this class.')
         return handle_grade_post(request, section, redirect_url=tab, highschool_ids=scope)
     return render(request, 'grades/hs_admin/class_section_grade.html', {
         'menu': menu, 'class_section': section,
         'intro': portal_lang(request).from_db().get('class_blurb', ''),
+        'grades_intro': hs_admin_grades_intro(),
         'grades_download_url': here + '?action=download_grades',
         'grid': build_grid(section, post_url=here, next_url=here, allow_edit=can_edit,
                            highschool_ids=scope),

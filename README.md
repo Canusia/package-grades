@@ -220,13 +220,16 @@ when the key is absent.
 |---|---|---|
 | `is_active` | Yes | Master switch for all grades email: Yes / Debug / No. Every sender goes through `services/email.py::send_grades_mail`. With Django `DEBUG` on, Yes acts as Debug. |
 | `debug_email_list` | '' | Recipients in Debug mode (comma-separated). Debug with an empty list sends nothing. |
-| `notify_instructor_on_submit` | Yes | Email the instructor when grade status becomes `submitted`. |
-| `grades_submitted_cc` | '' | Addresses copied on every grades-submitted email, even when the instructor copy is off. |
+| `notify_instructor_on_submit` | Yes | "Send a Confirmation When Grades Are Submitted". On each grading period's submission (from the grade POST, `services/submitted_email.py`), email whoever submitted, the primary instructor and the primary school's HS admins holding Can submit grades. Since v1.3.0; before, only the instructor, final period only. |
+| `grades_submitted_cc` | '' | Addresses copied on every grades-submitted email, even when the confirmation is off. |
 | `send_grade_reminders` | Yes | When No, `notify_grades_pending` and `notify_period_grades_pending` no-op, and `cron` is optional. The CronTab rows are left in place, which keeps their run history. |
 | `student_grades_visible` | Yes | When No, the student Grades page shows a notice instead of the table, and its feed `/student/grades/rows/` returns no rows. |
 | `student_transcript_enabled` | Yes | When No, the download button is hidden and `/student/grades/download/` returns 404. |
 | `student_grade_columns` | all five | Columns on the student Grades table (Term, Course / Section No., Tuition, Status, Submitted Grade). One list, `services/student_table.py::COLUMNS`, builds the `<th>` row, the DataTables config and the `/student/grades/rows/` feed; a column that is off is not sent to the browser. (#1) |
-| `hs_admin_grade_entry` | No | When Yes, HS admins get a Grades tab on their class-section page and `grades_highschool_admin:class_section_grade` answers; when No, that URL 404s. (#3) |
+| `hsadmin_grades_intro` | '' | Shown above the grades on the HS admin Grades tab and grade page; blank uses `grades_intro`. (#17) |
+| `hsadmin_grades_due_subject` / `hsadmin_grades_due_email` | seeded | The reminder HS admins with Can submit grades always get with the grades-due reminders. Required; a blank saved value falls back to the default. (#17) |
+
+`hs_admin_grade_entry` (none / view / edit) was retired in v1.3.0 (#16, #17). Every HS admin of a school on the class sees its grades; entering and submitting them needs an Active position at the school holding **Can submit grades** for the course's campus (cis 0.1.15a or later; on an older cis no HS admin enters grades). `from_db()` drops a stored value.
 
 `terms` stores term UUIDs. The settings schema's `terms` choices (`(id, str(term))`)
 are the source of truth for tools that select terms by name. A settings-API
@@ -238,6 +241,10 @@ write back.
 - Grade Distribution by High School (`grade_by_highschool`)
 - Grade Distribution by Course (`grade_by_course`)
 - Grade Distribution by Demographics (`grade_by_demographics`)
+- Class Grade Status (`class_grade_status`)
+- Grades by Grading Period (`period_grades`)
+- Grade Submission Status by Period (`period_submission_status`)
+- Grades: Pending Submission Recipients (`pending_submission_recipients`): one row per instructor and/or HS admin who still owes grades for the chosen periods; also a Bulk Messages data source (#14)
 
 ## SIS grade push
 

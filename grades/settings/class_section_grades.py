@@ -21,8 +21,9 @@ from ..services import student_table
 
 YES_NO = [('Yes', 'Yes'), ('No', 'No')]
 
-# What high school admins may do with grades on their class sections. Stored
-# under the old key hs_admin_grade_entry, which held Yes/No before (Yes = edit).
+# Retired in v1.3.0 (#16, #17): every HS admin sees grades and Can submit
+# grades decides entry. Kept so hs_admin_grade_access_value() still reads an
+# old stored value for any outside caller.
 HS_ADMIN_GRADE_ACCESS = [
     ('none', 'No access'),
     ('view', 'View grades only'),
@@ -37,13 +38,6 @@ def hs_admin_grade_access_value(value):
     return value if value in dict(HS_ADMIN_GRADE_ACCESS) else 'none'
 
 
-class GradeAccessField(forms.ChoiceField):
-    """The access choices, also accepting a legacy Yes/No post (an old saved
-    form or script); clean_hs_admin_grade_entry maps it to none/edit."""
-
-    def valid_value(self, value):
-        return value in _LEGACY_HS_ADMIN_GRADE_ACCESS or super().valid_value(value)
-
 # Keys added for the Grades Configuration Workbook (#2). from_db() fills these
 # only when absent, so a row saved before they existed keeps behaving as it did.
 NEW_KEY_DEFAULTS = {
@@ -54,9 +48,10 @@ NEW_KEY_DEFAULTS = {
     'send_grade_reminders': 'Yes',
     'student_grades_visible': 'Yes',
     'student_transcript_enabled': 'Yes',
-    'hs_admin_grade_entry': 'none',
     'student_grade_columns': student_table.DEFAULT,
     'grades_intro': '',
+    # #17: HS admin Grades intro; blank uses grades_intro.
+    'hsadmin_grades_intro': '',
     # #15: HS admins who can submit grades get their own reminder.
     'hsadmin_grades_due_subject': 'Grades are due',
     'hsadmin_grades_due_email': (
@@ -70,7 +65,12 @@ NEW_KEY_DEFAULTS = {
 RETIRED_KEYS = (
     'terms', 'start_date', 'end_date', 'reminder_dates', 'grades_open',
     'grades_closed', 'viewable_from_date', 'viewable_end_date',
+    # v1.3.0: replaced by the Can submit grades permission (#16, #17).
+    'hs_admin_grade_entry',
 )
+
+# Never blank once saved: a blank value falls back to the default (#17).
+HS_ADMIN_REMINDER_KEYS = ('hsadmin_grades_due_subject', 'hsadmin_grades_due_email')
 
 
 class GradeScaleField(forms.CharField):
@@ -84,6 +84,37 @@ class GradeScaleField(forms.CharField):
         if isinstance(value, (list, dict)):
             return json.dumps(value)
         return super().prepare_value(value)
+
+
+def hs_admin_access_note():
+    """What high school admins can do with grades, and how many positions hold
+    Can submit grades (#17). Shown at the top of the High School Admins group."""
+    from django.utils.html import format_html
+    from ..services.gating import submit_grades_positions
+    campus = None
+    try:
+        from cis.campus_context import current_campus_or_none, is_multi_campus
+        if is_multi_campus():
+            campus = current_campus_or_none()
+    except ImportError:  # pragma: no cover - cis without campuses
+        pass
+    positions = submit_grades_positions(campus)
+    if positions is None:
+        return format_html(
+            '<div class="alert alert-warning">This version of cis cannot grant high '
+            'school admins Can submit grades, so they see grades read-only and get no '
+            'reminders. Upgrade cis to 0.1.15a or later for high school admin grade '
+            'entry.</div>')
+    count = positions.values('pk').distinct().count()
+    text = ('Every high school admin sees the Grades tab on their classes, read-only. '
+            'Admins whose position at the school holds <strong>Can submit grades</strong> '
+            "(for the course's campus) can also enter and submit grades, and get the "
+            'reminder below with the grades-due reminders. Grant it on the admin\'s '
+            'position at the high school.')
+    level = 'info' if count else 'warning'
+    return format_html(
+        '<div class="alert alert-{}">{} <strong>{}</strong> active position(s) {} it now.</div>',
+        level, format_html(text), count, 'hold' if count != 1 else 'holds')
 
 
 class SettingForm(forms.Form):
@@ -126,9 +157,9 @@ class SettingForm(forms.Form):
         required=False,
         label='Require roster confirmation before grades are entered',
         help_text=(
-            'When checked, an instructor cannot enter grades for a class '
-            'section whose roster is still marked Pending Verification. '
-            'Sections the instructor has already responded to (Accurate or '
+            'When checked, nobody (instructor or high school admin) can enter '
+            'grades for a class section whose roster is still marked Pending '
+            'Verification. Sections already responded to (Accurate or '
             'Inaccurate), and sections never sent for verification, are not '
             'affected.'
         )
@@ -173,15 +204,12 @@ class SettingForm(forms.Form):
 
     hsadmin_grades_due_subject = forms.CharField(
         max_length=None,
-        required=False,
-        help_text=('Sent to high school administrators who hold Can submit grades at the '
-                   "section's school, when High School Admin Grade Access is Edit. "
-                   'Leave blank to send them no reminder.'),
+        help_text=('Sent with the grades-due reminders to high school admins whose '
+                   "position at the class's school holds Can submit grades."),
         label="HS Admin Grades Due Email Subject")
 
     hsadmin_grades_due_email = forms.CharField(
         max_length=None,
-        required=False,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
         help_text='Customize with {{admin_first_name}}, {{admin_last_name}}, {{term}}, {{number_of_sections_pending_grades}}, {{grading_period}}, {{due_date}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'hsadmin_grades_due\')" >See Preview</a>',
@@ -191,21 +219,29 @@ class SettingForm(forms.Form):
         max_length=None,
         widget=forms.Textarea,
         required=False,
-        help_text='Shown above the instructor Grades class list. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_intro\')" >See Preview</a>',
+        help_text='Shown above the instructor Grades class list, and to high school admins when HS Admin Grades Intro is blank. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_intro\')" >See Preview</a>',
         label='Grades Intro'
+    )
+
+    hsadmin_grades_intro = forms.CharField(
+        max_length=None,
+        widget=forms.Textarea,
+        required=False,
+        help_text='Shown above the grades on the high school admin Grades tab and grade page. Leave blank to use Grades Intro. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'hsadmin_grades_intro\')" >See Preview</a>',
+        label='HS Admin Grades Intro'
     )
 
     grades_open_class_section = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        help_text='Message displayed when grades are not yet submitted - this is in the class section page. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_open_class_section\')" >See Preview</a>',
-        label="Grades How To"
+        help_text='Shown above the grade roster (instructor and high school admin) while grades are not yet submitted. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_open_class_section\')" >See Preview</a>',
+        label="Grade Entry Instructions"
     )
 
     grades_submitted_class_section = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        help_text='Message displayed when grades have been submitted - this is in the class section page. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted_class_section\')" >See Preview</a>',
+        help_text='Shown above the grade roster (instructor and high school admin) once grades are submitted. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted_class_section\')" >See Preview</a>',
         label="Grades Submitted Message"
     )
 
@@ -217,8 +253,10 @@ class SettingForm(forms.Form):
 
     notify_instructor_on_submit = forms.ChoiceField(
         choices=YES_NO,
-        label='Email the Instructor When Grades Are Submitted',
-        help_text='When No, the instructor gets no confirmation email.',
+        label='Send a Confirmation When Grades Are Submitted',
+        help_text=('Sent each time grades are submitted for a grading period, to whoever '
+                   "submitted, the class's primary instructor and the school's high school "
+                   'admins who can submit grades. When No, only the Copy To addresses get it.'),
     )
 
     grades_submitted_cc = forms.CharField(
@@ -226,7 +264,7 @@ class SettingForm(forms.Form):
         label='Grades Submitted - Copy To',
         help_text=(
             'Comma-separated addresses (e.g. a shared CE inbox) that receive a copy of '
-            'every grades-submitted email. Sent even when the instructor copy is off.'
+            'every grades-submitted email. Sent even when the confirmation is off.'
         ),
     )
 
@@ -234,7 +272,7 @@ class SettingForm(forms.Form):
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Email template sent to instructor after final grades are submitted. Customize with {{instructor_first_name}}, {{instructor_last_name}}, {{course}}, {{class_number}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted_email\')" >See Preview</a>',
+        help_text='Sent each time grades are submitted for a grading period. Customize with {{submitter_first_name}}, {{submitter_last_name}}, {{instructor_first_name}}, {{instructor_last_name}}, {{grading_period}}, {{term}}, {{course}}, {{class_number}}. <a href="#" class="float-right" onClick="do_bulk_action(\'class_section_grades\', \'grades_submitted_email\')" >See Preview</a>',
         label="Grades Submitted - Email"
     )
 
@@ -256,14 +294,6 @@ class SettingForm(forms.Form):
         label='Student Grades Table Columns',
         help_text='Columns shown on the student portal Grades page. A column '
                   'left unchecked is not sent to the browser either.',
-    )
-
-    hs_admin_grade_entry = GradeAccessField(
-        choices=HS_ADMIN_GRADE_ACCESS,
-        label='High School Admin Grade Access',
-        help_text='View: high school admins get a read-only Grades tab on their class '
-                  'section page. View and enter: they can also enter and submit grades '
-                  'for sections at their schools.',
     )
 
     transcript_template_header = forms.CharField(
@@ -342,9 +372,6 @@ class SettingForm(forms.Form):
     def clean_grades_submitted_cc(self):
         return self._clean_addresses('grades_submitted_cc')
 
-    def clean_hs_admin_grade_entry(self):
-        return hs_admin_grade_access_value(self.cleaned_data.get('hs_admin_grade_entry'))
-
     def clean_debug_email_list(self):
         return self._clean_addresses('debug_email_list')
 
@@ -388,6 +415,11 @@ class SettingForm(forms.Form):
             is_submit_grades_open
         )
 
+        if field_name == 'hsadmin_grades_intro':
+            values = self.from_db()
+            return render(request, 'cis/email.html', {
+                'message': mark_safe(values.get('hsadmin_grades_intro')
+                                     or values.get('grades_intro') or '')})
         if field_name == 'grades_intro':
             grade_settings = self.from_db()
             return render(
@@ -455,6 +487,8 @@ class SettingForm(forms.Form):
                 'due_date': "12/15/2018",
                 'instructor_first_name': "John",
                 'instructor_last_name': "Smith",
+                'submitter_first_name': "Jane",
+                'submitter_last_name': "Doe",
                 'course': "ACC 101",
                 'class_number': "12345",
                 'term': "Fall 2018",
@@ -516,7 +550,6 @@ class SettingForm(forms.Form):
             # here is dropped on every save and from_db() refills its default.
             'student_grade_columns': (self.cleaned_data.get('student_grade_columns')
                                       or student_table.DEFAULT),
-            'hs_admin_grade_entry': self.cleaned_data['hs_admin_grade_entry'],
 
             'cron': self.cleaned_data.get('cron', ''),
             'grades_due_subject': self.cleaned_data['grades_due_subject'],
@@ -528,6 +561,7 @@ class SettingForm(forms.Form):
             'grades_submitted_email_subject': self.cleaned_data['grades_submitted_email_subject'],
 
             'grades_intro': self.cleaned_data.get('grades_intro', ''),
+            'hsadmin_grades_intro': self.cleaned_data.get('hsadmin_grades_intro', ''),
             'grades_open_class_section': self.cleaned_data['grades_open_class_section'],
             'grades_submitted_class_section': self.cleaned_data['grades_submitted_class_section'],
             'transcript_template_header': self.cleaned_data.get('transcript_template_header', ''),
@@ -580,11 +614,40 @@ class class_section_grades(SettingForm):
             'setting:run_record', args=[request.GET.get('report_id')])
         self.helper.add_input(Submit('submit', 'Save Setting'))
 
-        # Include grade settings JS via crispy forms layout
-        self.helper.layout = Layout(
-            HTML('<script src="/static/grades/js/settings.js"></script>'),
-            *self.fields.keys()
-        )
+        # Include grade settings JS via crispy forms layout; fields grouped
+        # under headers (#17), any field not listed here appended at the end.
+        groups = [
+            ('General', ['is_active', 'debug_email_list', 'grade_scale',
+                         'registration_status']),
+            ('Roster Confirmation', ['require_roster_confirmation',
+                                     'roster_not_confirmed_message']),
+            ('Grades-Due Reminders', ['send_grade_reminders', 'cron',
+                                      'grades_due_subject', 'grades_due_email']),
+            ('High School Admins', ['hsadmin_grades_due_subject',
+                                    'hsadmin_grades_due_email', 'hsadmin_grades_intro']),
+            ('Grade Pages', ['grades_intro', 'grades_open_class_section',
+                             'grades_submitted_class_section']),
+            ('Grades Submitted Email', ['notify_instructor_on_submit', 'grades_submitted_cc',
+                                        'grades_submitted_email_subject',
+                                        'grades_submitted_email']),
+            ('Students', ['student_grades_visible', 'student_transcript_enabled',
+                          'student_grade_columns']),
+            ('Transcript', ['transcript_template_header', 'transcript_table_header',
+                            'transcript_row_template', 'transcript_template_footer',
+                            'transcript_registration_status']),
+        ]
+        items, placed = [HTML('<script src="/static/grades/js/settings.js"></script>')], set()
+        for title, names in groups:
+            names = [n for n in names if n in self.fields]
+            if not names:
+                continue
+            items.append(HTML(f'<h5 class="mt-4 mb-3 border-bottom pb-1">{title}</h5>'))
+            if title == 'High School Admins':
+                items.append(HTML(hs_admin_access_note()))
+            items += names
+            placed.update(names)
+        items += [n for n in self.fields if n not in placed]
+        self.helper.layout = Layout(*items)
 
     def install(self):
         grade_scale = self.get_default_grade_scale()
@@ -747,8 +810,9 @@ class class_section_grades(SettingForm):
             # Absent only: '' and 'No' are real choices for these (#2).
             for key, default_value in NEW_KEY_DEFAULTS.items():
                 values.setdefault(key, default_value)
-            values['hs_admin_grade_entry'] = hs_admin_grade_access_value(
-                values.get('hs_admin_grade_entry'))
+            for key in HS_ADMIN_REMINDER_KEYS:
+                if not values.get(key):
+                    values[key] = NEW_KEY_DEFAULTS[key]
             for key in RETIRED_KEYS:
                 values.pop(key, None)
             return values

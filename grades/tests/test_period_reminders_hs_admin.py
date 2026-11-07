@@ -161,7 +161,9 @@ class HSAdminPeriodReminderTests(TestCase):
 
         self.assertEqual(self._recipients(), ['hsr_inst@example.com'])
 
-    def test_view_or_none_grade_access_sends_no_admin_email(self):
+    def test_admins_reminded_whatever_the_retired_access_value(self):
+        # v1.3.0 (#17): the permission alone decides; a stored none/view from
+        # the retired High School Admin Grade Access setting changes nothing.
         self._admin('perm_admin')
         self._section()
         self._period()
@@ -171,9 +173,11 @@ class HSAdminPeriodReminderTests(TestCase):
             SectionPeriodStatus.objects.all().delete()
             self._settings(entry=entry)
             notify_sections_pending_period_grade(today=TODAY)
-            self.assertEqual(self._recipients(), ['hsr_inst@example.com'], entry)
+            self.assertEqual(
+                self._recipients(), ['hsr_inst@example.com', 'perm_admin@example.com'], entry)
 
-    def test_empty_admin_subject_sends_no_admin_email(self):
+    def test_empty_admin_subject_uses_the_default(self):
+        # #17: a blank admin subject no longer turns admin reminders off.
         self._settings(admin_subject='')
         self._admin('perm_admin')
         self._section()
@@ -181,7 +185,11 @@ class HSAdminPeriodReminderTests(TestCase):
 
         notify_sections_pending_period_grade(today=TODAY)
 
-        self.assertEqual(self._recipients(), ['hsr_inst@example.com'])
+        self.assertEqual(
+            self._recipients(), ['hsr_inst@example.com', 'perm_admin@example.com'])
+        subjects = {m.email.subject for m in Message.objects.all()
+                    if 'perm_admin@example.com' in m.email.to}
+        self.assertEqual(subjects, {'Grades are due'})
 
     # -- sections without a teacher --------------------------------------
 
@@ -273,12 +281,16 @@ class HSAdminReminderSettingDefaultsTests(TestCase):
         self.assertEqual(values['hsadmin_grades_due_subject'], 'Grades are due')
         self.assertIn('{{admin_first_name}}', values['hsadmin_grades_due_email'])
 
-    def test_blank_admin_subject_is_kept(self):
+    def test_blank_admin_wording_falls_back_to_the_default(self):
+        # #17: blank never means "off".
         from ..settings.class_section_grades import class_section_grades
         Setting.objects.update_or_create(
             key=GRADES_KEY,
-            defaults={'value': {'grades': 'A,B', 'hsadmin_grades_due_subject': ''}})
-        self.assertEqual(class_section_grades.from_db()['hsadmin_grades_due_subject'], '')
+            defaults={'value': {'grades': 'A,B', 'hsadmin_grades_due_subject': '',
+                                'hsadmin_grades_due_email': ''}})
+        values = class_section_grades.from_db()
+        self.assertEqual(values['hsadmin_grades_due_subject'], 'Grades are due')
+        self.assertIn('{{admin_first_name}}', values['hsadmin_grades_due_email'])
 
 
 class HSAdminReminderScopeTests(HSAdminPeriodReminderTests):
@@ -289,8 +301,8 @@ class HSAdminReminderScopeTests(HSAdminPeriodReminderTests):
     test_admin_without_the_permission_is_not_emailed = None
     test_inactive_position_is_not_emailed = None
     test_admin_at_another_school_is_not_emailed = None
-    test_view_or_none_grade_access_sends_no_admin_email = None
-    test_empty_admin_subject_sends_no_admin_email = None
+    test_admins_reminded_whatever_the_retired_access_value = None
+    test_empty_admin_subject_uses_the_default = None
     test_section_without_teacher_reminds_admins_and_is_stamped = None
     test_section_without_teacher_or_admins_is_skipped = None
     test_submitted_section_does_not_remind_admins = None

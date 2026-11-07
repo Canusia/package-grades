@@ -19,13 +19,9 @@ from ..compat import (
 )
 from ..models import GradingPeriod, SectionPeriodStatus
 from ..services.csv_safe import safe_cell
-from ..services.gating import hs_admin_can_view_grades
 from ..services.report_marks import period_mark_annotation, periods_outside_terms_error
 from ._period_picker import PeriodSelectMultiple, follow_terms
 from .class_grade_status import GRADE_STATUS_CHOICES, NOT_STARTED, status_key
-
-HS_ACCESS_OFF = 'High school admin access to grades is turned off.'
-
 
 class period_grades(forms.Form):
     """Student grades for each selected grading period (mid-semester and final)."""
@@ -61,12 +57,8 @@ class period_grades(forms.Form):
         self.helper.form_method = 'POST'
 
         user = getattr(self.request, 'user', None)
-        # A high school admin may run this only while High School Admin Grade
-        # Access is view or edit. The setting is campus-scoped and table() runs
-        # later in a task with no campus, so it is checked here and in clean(),
-        # both inside the request.
-        self.hs_access_off = (user is not None and not is_ce_user(user)
-                              and not hs_admin_can_view_grades())
+        # Every high school admin may run this for their own schools (v1.3.0:
+        # the High School Admin Grade Access setting is gone, #16/#17).
         # This campus's terms and periods only: both campuses have a "Fall 2026"
         # with the same period names, so a mixed pick is easy to make.
         terms = current_campus_only(Term.objects.order_by('-code'), 'academic_year__campus')
@@ -82,12 +74,8 @@ class period_grades(forms.Form):
             self.fields['highschools'].help_text = 'Leave blank to include all your high schools'
         else:
             self.fields['highschools'].queryset = picker_queryset()
-        if self.hs_access_off:
-            self.helper.layout = Layout(
-                HTML(f'<div class="alert alert-warning">{HS_ACCESS_OFF}</div>'))
-        else:
-            self.helper.add_input(Submit('submit', 'Generate Report'))
-            self.helper.layout = Layout(*self.fields, follow_terms(terms))
+        self.helper.add_input(Submit('submit', 'Generate Report'))
+        self.helper.layout = Layout(*self.fields, follow_terms(terms))
 
         if self.request:
             self.helper.form_action = reverse_lazy(
@@ -117,8 +105,6 @@ class period_grades(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        if self.hs_access_off:
-            raise forms.ValidationError(HS_ACCESS_OFF)
         periods_outside_terms_error(self, 'periods')
         return cleaned
 

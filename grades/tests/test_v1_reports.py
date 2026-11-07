@@ -23,7 +23,7 @@ from ..reports import period_submission_status as m_pss
 from ..reports.grade_by_course import grade_by_course
 from ..reports.grade_by_demographics import grade_by_demographics
 from ..reports.grade_by_highschool import grade_by_highschool
-from ..reports.period_grades import HS_ACCESS_OFF, period_grades
+from ..reports.period_grades import period_grades
 from ..reports.period_submission_status import period_submission_status
 from ..services.csv_safe import safe_cell
 from ..services.periods import save_mark, set_status
@@ -327,24 +327,12 @@ class PeriodGradesTermsAndHSAdminTests(GradesTestCase):
         names = [hs.name for hs in self._form(self.hs_user).fields['highschools'].queryset]
         self.assertEqual(names, ['Own HS'])
 
-    def test_hs_admin_cannot_run_it_when_grade_access_is_off(self):
+    def test_every_hs_admin_can_run_it(self):
+        # v1.3.0: no access setting to turn the report off for HS admins.
         data = {'term': [str(self.parent.id)], 'periods': [str(self.p_child.id)]}
-        form = self._form(self.hs_user, data=data)  # setting has no access: none
-        self.assertFalse(form.is_valid())
-        self.assertIn(HS_ACCESS_OFF, form.non_field_errors())
-        unbound = self._form(self.hs_user)
-        self.assertEqual(unbound.helper.inputs, [])
-        self.assertIn(HS_ACCESS_OFF, unbound.helper.layout.fields[0].html)
-        # CE users are not affected.
-        self.assertTrue(self._form(data=data).is_valid())
-
-    def test_hs_admin_can_run_it_with_view_or_edit_access(self):
-        data = {'term': [str(self.parent.id)], 'periods': [str(self.p_child.id)]}
-        for access in ('view', 'edit'):
-            f.grades_setting(hs_admin_grade_entry=access)
-            form = self._form(self.hs_user, data=data)
-            self.assertTrue(form.is_valid(), form.errors)
-            self.assertTrue(form.helper.inputs)
+        form = self._form(self.hs_user, data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertTrue(form.helper.inputs)
 
     def test_hs_admin_rows_are_their_active_schools_whatever_is_selected(self):
         data = {'term': [self.parent.id], 'periods': [self.p_child.id],

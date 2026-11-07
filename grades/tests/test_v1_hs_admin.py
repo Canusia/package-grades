@@ -34,7 +34,7 @@ class HSAdminV1Tests(GradesTestCase):
 
     @classmethod
     def setUpTestData(cls):
-        f.grades_setting(hs_admin_grade_entry='Yes')
+        f.grades_setting()
         today = date.today()
         cls.hs = f.highschool()
         cls.term = f.term()
@@ -45,6 +45,7 @@ class HSAdminV1Tests(GradesTestCase):
         cls.admin = get_user_model().objects.create_user(
             username='hsa@example.com', email='hsa@example.com', password='x')
         cls.admin.groups.add(Group.objects.get_or_create(name='highschool_admin')[0])
+        f.grant_submit_grades(cls.admin, cls.hs)  # #16
 
     def setUp(self):
         self.client.force_login(self.admin)

@@ -92,58 +92,20 @@ def needs_reminder(status_row, period, today=None):
     return (today - status_row.last_notified_on).days >= freq
 
 
-def _hs_admin_lookup(configs):
+def _hs_admin_lookup(configs=None):
     """``(highschool_id, campus) -> [users]`` of HS admins who can submit
-    grades, or ``None`` when admins are not reminded at all.
+    grades, or ``None`` on a cis that cannot grant it.
 
-    Admins are reminded when HS admin grade entry is Edit and an admin
-    subject is configured. Their position at the school must be Active and
-    hold Can submit grades for the course's campus (#15). On a cis without
-    per-school permissions nothing is looked up.
+    Admins whose Active position at the school holds Can submit grades for
+    the course's campus are always reminded (#17): there is no setting to
+    turn them off. ``configs`` is accepted for older callers and ignored.
     """
-    from ..settings.class_section_grades import hs_admin_grade_access_value
-    if hs_admin_grade_access_value(configs.get('hs_admin_grade_entry')) != 'edit':
-        return None
-    if not configs.get('hsadmin_grades_due_subject'):
-        return None
-    try:
-        from cis.models.highschool_administrator import (
-            HSAdminPerm, HSAdministratorPosition)
-    except ImportError:  # cis before per-school HS admin permissions
-        return None
-    codename = getattr(HSAdminPerm, 'SUBMIT_GRADES', None)
-    with_perm = getattr(HSAdministratorPosition.objects.none(), 'with_perm', None)
-    if codename is None or with_perm is None or not _takes_campus(with_perm):
-        # A partial port of the permissions: remind teachers only.
+    from .gating import submit_grades_admins_lookup
+    lookup = submit_grades_admins_lookup()
+    if lookup is None:
         logger.warning('grades: this cis cannot look up HS admins who can '
                        'submit grades; reminding teachers only.')
-        return None
-
-    cache = {}
-
-    def lookup(highschool_id, campus_id):
-        key = (highschool_id, campus_id)
-        if key not in cache:
-            positions = HSAdministratorPosition.objects.filter(
-                highschool_id=highschool_id, hsadmin__user__is_active=True,
-            ).with_perm(codename, campus_id).select_related(
-                'hsadmin__user').distinct()
-            users = []
-            for position in positions:
-                user = position.hsadmin.user
-                if _valid_email(user.email) and user not in users:
-                    users.append(user)
-            cache[key] = users
-        return cache[key]
     return lookup
-
-
-def _takes_campus(method):
-    import inspect
-    try:
-        return 'campus' in inspect.signature(method).parameters
-    except (TypeError, ValueError):
-        return False
 
 
 def _valid_email(address):
@@ -237,6 +199,12 @@ def _send_period_reminder(period, user, num_sections, configs, today,
     prefix = 'hsadmin_' if kind == 'hsadmin' else ''
     email_subject = configs.get(f'{prefix}grades_due_subject')
     email_text = configs.get(f'{prefix}grades_due_email')
+    if kind == 'hsadmin':
+        # A blank admin wording falls back to the default; it never turns
+        # admin reminders off (#17).
+        from ..settings.class_section_grades import NEW_KEY_DEFAULTS
+        email_subject = email_subject or NEW_KEY_DEFAULTS['hsadmin_grades_due_subject']
+        email_text = email_text or NEW_KEY_DEFAULTS['hsadmin_grades_due_email']
 
     if not _valid_email(user.email):
         return False
@@ -274,10 +242,10 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
     today = today or datetime.date.today()
     configs = class_section_grades.from_db()
 
-    # Teachers need grades_due_subject; admins need their own subject (and
-    # grade entry Edit). Nothing to send without either.
+    # Teachers need grades_due_subject. Admins with Can submit grades are
+    # always reminded (#17); nothing to send without either.
     teachers_on = bool(configs.get('grades_due_subject'))
-    admin_lookup = _hs_admin_lookup(configs)
+    admin_lookup = _hs_admin_lookup()
     if not teachers_on and admin_lookup is None:
         return None
     periods = list(periods_due_for_reminder(today))

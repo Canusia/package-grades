@@ -3,59 +3,16 @@ Grades app signals.
 
 Signal handlers for grade-related events.
 
-``grade_status_submitted`` is the instructor notification email that used to
-live in ``cis.signals.sections.grades_submitted``. ``cis`` keeps only the
-``grade_status_changed_on`` timestamp bookkeeping on its own field; the email is
-owned by this (optional) app, so a tenant without ``grades`` installed simply
-never sends it.
+The grades-submitted confirmation email used to be a ClassSection pre_save
+receiver here (final period only, instructor only). Since v1.3.0 it is sent
+from the grade POST for every grading period (``services.submitted_email``).
 """
 from django.core.signals import request_finished, request_started
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
-from django.template import Context, Template
-from django.template.loader import get_template
 
 
 from cis.models.section import ClassSection, StudentRegistration
-
-
-@receiver(pre_save, sender=ClassSection)
-def grade_status_submitted(sender, instance, **kwargs):
-    """Email the instructor when a section's grade status becomes 'submitted'."""
-    previous_status = instance.tracker.previous('grade_status')
-    status = instance.grade_status
-
-    if previous_status == status:
-        return
-
-    if status != 'submitted':
-        return
-
-    from .services.email import parse_addresses, send_grades_mail
-    from .settings.class_section_grades import class_section_grades
-    gr_settings = class_section_grades.from_db()
-    subject = gr_settings.get('grades_submitted_email_subject')
-    message = gr_settings.get('grades_submitted_email')
-
-    # The instructor copy and the office copy (#2) are switched separately.
-    to = []
-    if gr_settings.get('notify_instructor_on_submit', 'Yes') == 'Yes':
-        to.append(instance.teacher.user.email)
-    to += parse_addresses(gr_settings.get('grades_submitted_cc'))
-    if not to:
-        return
-
-    message = Template(message or '')
-    context = Context({
-        'instructor_first_name': instance.teacher.user.first_name,
-        'instructor_last_name': instance.teacher.user.last_name,
-        'course': instance.course,
-        'class_number': instance.class_number
-    })
-    text_body = message.render(context)
-    template = get_template('cis/email.html')
-    html_body = template.render({'message': text_body})
-    send_grades_mail(gr_settings, subject, text_body, html_body, to)
 
 
 @receiver(post_save, sender=StudentRegistration)

@@ -114,9 +114,9 @@ def grade_sis_tab(request, record):
 
 def _hs_admin_may_see_grades(user, record):
     # The class-section view has already 404'd a section outside the admin's
-    # schools; this only applies CE's access setting (#3): view or edit.
-    from .services.gating import hs_admin_can_view_grades
-    return hs_admin_can_view_grades()
+    # schools. Every HS admin there sees grades (#16); entry is decided per
+    # admin in hs_admin_grades_tab.
+    return True
 
 
 @register(hsadmin_class_section_tabs, 'tab', slug='grades', title='Grades',
@@ -125,9 +125,9 @@ def _hs_admin_may_see_grades(user, record):
 def hs_admin_grades_tab(request, record):
     """The shared grade grid, inline. `record` is the ClassSection."""
     from django.urls import reverse
-    from .services.gating import hs_admin_grade_entry_enabled
+    from .services.gating import hs_admin_can_submit_grades
     from .services.grade_grid import build_grid
-    from .views.hs_admin import admin_scope
+    from .views.hs_admin import admin_scope, hs_admin_grades_intro
 
     # A secondary-school admin (cis#154) sees only their students; a primary
     # admin, or one highschool_admin let in by another rule, the whole class.
@@ -135,8 +135,9 @@ def hs_admin_grades_tab(request, record):
     post_url = reverse('grades_highschool_admin:class_section_grade', args=[record.id])
     next_url = reverse('highschool_admin:class_section', args=[record.id]) + '#grades'
     return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
-                               allow_edit=hs_admin_grade_entry_enabled(),
+                               allow_edit=hs_admin_can_submit_grades(request.user, record),
                                highschool_ids=scope),
+            'grades_intro': hs_admin_grades_intro(),
             'grades_download_url': post_url + '?action=download_grades', 'in_tab': True}
 
 

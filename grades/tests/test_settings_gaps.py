@@ -76,12 +76,14 @@ class _Fixture(TestCase):
             key=KEY, defaults={'value': {**legacy_value(self.term.id), **overrides}})
 
     def _submit_section(self):
+        # v1.3.0: the confirmation is sent by the grade POST for each period
+        # (services.submitted_email), not by saving grade_status.
+        from ..services.submitted_email import send_grades_submitted
         section = ClassSection.objects.create(
             course=self.course, term=self.term, teacher=self.teacher,
             class_number=f'C-{_sfx()}', section_number='001')
         Message.objects.all().delete()
-        section.grade_status = 'submitted'
-        section.save()
+        send_grades_submitted(section, None)
         return [m.email.to for m in Message.objects.all()]
 
 
@@ -133,7 +135,7 @@ class SettingsFormTest(_Fixture):
                 'is_active': 'Yes', 'debug_email_list': '',
                 'notify_instructor_on_submit': 'Yes', 'grades_submitted_cc': '',
                 'send_grade_reminders': 'Yes', 'student_grades_visible': 'Yes',
-                'student_transcript_enabled': 'Yes', 'hs_admin_grade_entry': 'none',
+                'student_transcript_enabled': 'Yes', 'hsadmin_grades_due_subject': 'HS due', 'hsadmin_grades_due_email': 'Hi {{admin_first_name}}',
                 'student_grade_columns': ['term', 'course', 'tuition', 'status', 'grade'],
                 **overrides}
         return class_section_grades(HttpRequest(), data)
@@ -157,12 +159,25 @@ class SettingsFormTest(_Fixture):
         self.assertFalse(form.is_valid())
         self.assertIn('debug_email_list', form.errors)
 
-    def test_legacy_yes_no_grade_access_accepted_and_mapped(self):
-        for posted, stored in (('Yes', 'edit'), ('No', 'none'), ('view', 'view')):
-            form = self._form(hs_admin_grade_entry=posted)
-            self.assertTrue(form.is_valid(), form.errors)
-            self.assertEqual(form.cleaned_data['hs_admin_grade_entry'], stored)
-        self.assertFalse(self._form(hs_admin_grade_entry='Maybe').is_valid())
+    def test_grade_access_setting_is_retired(self):
+        # v1.3.0 (#16, #17): Can submit grades decides; no access question.
+        form = self._form(hs_admin_grade_entry='edit')
+        self.assertNotIn('hs_admin_grade_entry', form.fields)
+        self.assertTrue(form.is_valid(), form.errors)
+        self._store(hs_admin_grade_entry='edit')
+        self.assertNotIn('hs_admin_grade_entry', class_section_grades.from_db())
+
+    def test_hs_admin_reminder_wording_required(self):
+        form = self._form(hsadmin_grades_due_subject='', hsadmin_grades_due_email='')
+        self.assertFalse(form.is_valid())
+        self.assertIn('hsadmin_grades_due_subject', form.errors)
+        self.assertIn('hsadmin_grades_due_email', form.errors)
+
+    def test_hs_admin_group_shows_the_permission_count(self):
+        html = ' '.join(getattr(item, 'html', '') for item in self._form().helper.layout.fields)
+        self.assertIn('High School Admins', html)
+        self.assertIn('Can submit grades', html)
+        self.assertIn('active position(s)', html)
 
     def test_reminders_off_leaves_crontab_alone(self):
         CronTab.objects.update_or_create(
@@ -173,16 +188,16 @@ class SettingsFormTest(_Fixture):
         self.assertEqual(CronTab.objects.get(command='notify_grades_pending').cron, '5 5 * * *')
         self.assertEqual(Setting.objects.get(key=KEY).value['send_grade_reminders'], 'No')
 
-    def test_student_columns_and_hs_admin_access_round_trip(self):
-        # #13: both were validated but never stored, so from_db() refilled
-        # the defaults and the page reverted after "Successfully saved".
+    def test_student_columns_and_hs_admin_intro_round_trip(self):
+        # #13: fields validated but never stored made the page revert after
+        # "Successfully saved".
         form = self._form(student_grade_columns=['term', 'course', 'grade'],
-                          hs_admin_grade_entry='edit')
+                          hsadmin_grades_intro='<p>For schools</p>')
         self.assertTrue(form.is_valid(), form.errors)
         form.run_record()
         values = class_section_grades.from_db()
         self.assertEqual(values['student_grade_columns'], ['term', 'course', 'grade'])
-        self.assertEqual(values['hs_admin_grade_entry'], 'edit')
+        self.assertEqual(values['hsadmin_grades_intro'], '<p>For schools</p>')
 
     def test_every_form_field_is_stored(self):
         # Guard for #13: run_record() replaces the whole stored value, so a
@@ -212,7 +227,8 @@ class SettingsFormTest(_Fixture):
         for k in ('is_active', 'notify_instructor_on_submit', 'send_grade_reminders',
                   'student_grades_visible', 'student_transcript_enabled'):
             self.assertEqual(value[k], 'Yes', k)
-        self.assertEqual(value['hs_admin_grade_entry'], 'none')  # #3: opt in
+        self.assertNotIn('hs_admin_grade_entry', value)  # retired in v1.3.0
+        self.assertEqual(value['hsadmin_grades_intro'], '')
 
 
 class SettingsAPITest(_Fixture):

@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.3.0
+
+### Changed (breaking)
+
+- **#16, #17: Can submit grades decides HS admin grade entry.** The High School
+  Admin Grade Access setting (none / view / edit, `hs_admin_grade_entry`) is
+  removed. Every HS admin of a school on the class sees its grades read-only
+  (Grades tab, grade page, CSV, roster PDF, Grades by Grading Period). Entering
+  and submitting needs an Active position at the school holding Can submit
+  grades for the course's campus. On a cis without per-school permissions
+  (before 0.1.15a) no HS admin enters grades.
+- **#17: HS admin reminders are always on** for admins holding Can submit
+  grades. A blank HS admin subject or message no longer turns them off: the
+  fields are required and a blank saved value falls back to the default.
+- **#17: the grades-submitted confirmation is sent for every grading period**,
+  from the grade POST (`services/submitted_email.py`), to whoever submitted,
+  the primary instructor and the primary school's HS admins holding Can submit
+  grades. Secondary instructors and secondary-school admins are not included.
+  The ClassSection `grade_status` signal that sent it (final period, instructor
+  only) is removed, so changing `grade_status` outside grade entry sends
+  nothing. A class with no instructor no longer errors.
+
+### Added
+
+- #17: HS Admin Grades Intro (`hsadmin_grades_intro`), shown on the HS admin
+  Grades tab and grade page; blank uses Grades Intro.
+- #17: the setting page groups its fields under headers, and the High School
+  Admins group says who can enter grades and how many active positions hold
+  Can submit grades.
+- #17: `{{submitter_first_name}}`, `{{submitter_last_name}}`,
+  `{{grading_period}}` and `{{term}}` in the grades-submitted email.
+- #14: report **Grades: Pending Submission Recipients**: one row per
+  instructor and/or HS admin (Recipients choice, default Instructors) who still
+  owes grades for the chosen grading periods; also a Bulk Messages data source.
+- `services.gating`: `hs_admin_can_submit_grades(user, section)`,
+  `submit_grades_supported()`, `submit_grades_positions()`,
+  `submit_grade_grants()`, `submit_grades_admins_lookup()`.
+
+### Wording
+
+- Labels: "Send a Confirmation When Grades Are Submitted", "Grade Entry
+  Instructions"; help texts name both instructors and HS admins. The default
+  roster-not-confirmed message says "the class section page".
+
+### Deprecated
+
+- `services.gating.hs_admin_grade_access()`, `hs_admin_can_view_grades()`,
+  `hs_admin_grade_entry_enabled()`; use `hs_admin_can_submit_grades()`.
+
 ## 1.2.0
 
 ### Added

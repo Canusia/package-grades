@@ -97,3 +97,20 @@ def period(term_obj, name, opens_on, due_on, sequence=1, is_final=False, **kw):
 
 D = date  # short alias for tests
 
+
+
+def grant_submit_grades(user, *highschools, campus=None):
+    """Give ``user`` an Active HS admin position at each school holding Can
+    submit grades (#16), for ``campus`` (None = every campus)."""
+    from cis.models.highschool_administrator import (
+        HSAdminPerm, HSAdministrator, HSAdministratorPosition, HSPosition)
+    hsadmin, _ = HSAdministrator.objects.get_or_create(user=user)
+    position, _ = HSPosition.objects.get_or_create(name='Grades Registrar')
+    roles = []
+    for school in highschools:
+        role, _ = HSAdministratorPosition.objects.get_or_create(
+            hsadmin=hsadmin, highschool=school, position=position,
+            defaults={'status': 'Active'})
+        role.grant(HSAdminPerm.SUBMIT_GRADES, campus=campus)
+        roles.append(role)
+    return roles
