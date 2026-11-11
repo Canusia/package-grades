@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "myce_grades"
-version = "1.3.0"
+version = "1.4.0"
 authors = [
   { name="Avinash Kadaji", email="avi@canusia.com" },
 ]
@@ -14,6 +14,9 @@ requires-python = ">=3.8"
 dependencies = [
     "Django>=3.2",
     "django-simple-history>=3.0",
+    # Registers commands so they can be run from /admin/ (grades#20). The
+    # host still has to add it to INSTALLED_APPS for them to show up.
+    "django-admin-runner @ git+https://github.com/Canusia/package-admin-runner.git@v0.3.0.post1",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

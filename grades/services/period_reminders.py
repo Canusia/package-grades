@@ -50,7 +50,7 @@ from django.core.validators import validate_email
 from django.template import Context, Template
 from django.template.loader import get_template
 
-from .email import send_grades_mail
+from .email import resolve_recipients, send_grades_mail
 
 from ..models import GradingPeriod, SectionPeriodStatus
 
@@ -190,7 +190,7 @@ def sections_pending_for_period(period, today=None, admin_lookup=None,
 
 
 def _send_period_reminder(period, user, num_sections, configs, today,
-                          kind='teacher'):
+                          kind='teacher', dry_run=False):
     """Render and queue one reminder for one period.
 
     Teachers get ``grades_due_subject`` / ``grades_due_email``; HS admins
@@ -228,15 +228,34 @@ def _send_period_reminder(period, user, num_sections, configs, today,
     template = get_template('cis/email.html')
     html_body = template.render({'message': text_body})
 
+    if dry_run:
+        # Rendered (so a broken template fails here too) but not sent; the
+        # Yes/Debug/No switch still decides whether it would go out.
+        return bool(resolve_recipients(configs, send_to))
+
     return bool(send_grades_mail(configs, email_subject, text_body, html_body, send_to))
 
 
-def notify_sections_pending_period_grade(today=None, *args, **kwargs):
+def notify_sections_pending_period_grade(today=None, *args, dry_run=False,
+                                         **kwargs):
     """Send every reminder due today.
 
     Returns ``(summary, detailed_log)``, or ``None`` when no email subject is
     configured.
+
+    With ``dry_run`` nothing is sent or kept: the log lists who would be
+    emailed, and the status rows the scan creates are rolled back.
     """
+    if not dry_run:
+        return _notify(today)
+    from django.db import transaction
+    with transaction.atomic():
+        result = _notify(today, dry_run=True)
+        transaction.set_rollback(True)
+    return result
+
+
+def _notify(today=None, dry_run=False):
     from ..settings.class_section_grades import class_section_grades
 
     today = today or datetime.date.today()
@@ -250,7 +269,8 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
         return None
     periods = list(periods_due_for_reminder(today))
 
-    summary_lines = [
+    summary_lines = ['Dry run: nothing sent'] if dry_run else []
+    summary_lines += [
         f'{len(periods)} grading period(s) in reminder window on '
         f'{today.strftime("%m/%d/%Y")}'
     ]
@@ -287,7 +307,8 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
         for entry in by_user.values():
             user, kind, rows = entry['user'], entry['kind'], entry['rows']
             sent = _send_period_reminder(
-                period, user, len(rows), configs, today, kind=kind)
+                period, user, len(rows), configs, today, kind=kind,
+                dry_run=dry_run)
             if not sent:
                 continue
 
@@ -314,7 +335,7 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
             for section, status_row in rows:
                 notified_sections[section.pk] = (section, status_row)
 
-        for section, status_row in notified_sections.values():
+        for section, status_row in ([] if dry_run else notified_sections.values()):
             status_row.last_notified_on = today
             status_row.save(update_fields=['last_notified_on'])
 
@@ -325,11 +346,13 @@ def notify_sections_pending_period_grade(today=None, *args, **kwargs):
         summary_lines.append(
             f'{period.term} - {period.name}: {len(pending)} section(s) '
             f'pending, {period_log["teachers_notified"]} teacher(s), '
-            f'{period_log["hs_admins_notified"]} HS admin(s) notified'
+            f'{period_log["hs_admins_notified"]} HS admin(s) '
+            f'{"would be notified" if dry_run else "notified"}'
         )
         detailed_log['periods'].append(period_log)
 
+    verb = 'Would notify' if dry_run else 'Notified'
     summary_lines.append(
-        f'Notified {total_teachers} teacher(s) and {total_admins} HS admin(s) in total')
+        f'{verb} {total_teachers} teacher(s) and {total_admins} HS admin(s) in total')
 
     return ('\r\n'.join(summary_lines), detailed_log)

@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+
+- **#20: run the grading-period reminders from the Django admin.**
+  `notify_period_grades_pending` is registered with django-admin-runner under
+  the **grades** group (Admin → Admin Runner → Commands). Superusers can
+  run it, and so can staff holding `grades.change_gradingperiod`. Runs are
+  queued on the django-tasks worker, and their output is kept on the
+  execution page. Cron still schedules the regular runs.
+- **#20: `--dry-run`** on `notify_period_grades_pending`: lists each teacher
+  and HS admin who would be emailed (name, address, sections, grading
+  period), renders their emails, and sends, saves and notes nothing.
+- The command now prints its summary, so `manage.py` and the admin show what
+  it did.
+
+### Fixed
+
+- **#20: `notify_period_grades_pending` without `-t/--time` crashed** before
+  sending anything. cis's cron-log receivers parse the scheduled time, and a
+  missing time raised `TypeError`. The command now writes to the cron log only
+  when cron passes a time, so manual and admin runs work.
+
+### Changed
+
+- **New dependency: `django-admin-runner`**, the Canusia fork
+  (`Canusia/package-admin-runner@v0.3.0.post1`), which needs Django 5.2 or
+  later and Python 3.12 or later. Installing it is harmless on its own: the
+  commands appear in the admin only when the host adds `django_admin_runner`
+  to `INSTALLED_APPS` and runs `migrate`. `grades/admin_runner.py` still falls back to a no-op
+  decorator if the import fails.
+- The runner is pinned to the exact tag. A host that moves its own
+  `package-admin-runner` line to another tag or to `git+ssh` gets a pip
+  conflict until grades is released with the same pin, so bump them together.
+- The retired `notify_grades_pending` is not registered.
+
 ## 1.3.0
 
 ### Changed (breaking)
