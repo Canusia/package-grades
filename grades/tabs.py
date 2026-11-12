@@ -133,7 +133,7 @@ def hs_admin_grades_tab(request, record):
     # admin (cis#154) sees their students; one highschool_admin let in only
     # because their students are in the class (hosted_or_own_students,
     # highschool_admin#28) sees those students read-only -- the grade view
-    # and its CSV 404 for them, so no entry and no download link.
+    # and its CSV and roster PDF 404 for them, so no entry and no download links.
     on_section, scope = admin_scope(request, record)
     post_url = reverse('grades_highschool_admin:class_section_grade', args=[record.id])
     next_url = reverse('highschool_admin:class_section', args=[record.id]) + '#grades'
@@ -144,6 +144,7 @@ def hs_admin_grades_tab(request, record):
             'grades_intro': hs_admin_grades_intro(),
             'grades_download_url': (post_url + '?action=download_grades'
                                     if on_section else None),
+            'hide_roster_download': not on_section,
             'in_tab': True}
 
 

@@ -1,6 +1,7 @@
 {% comment %}
 Column-per-period grade grid (spec §3). Context: grid (services.grade_grid.build_grid); optional grades_download_url
-(a "Download Grades" CSV button beside Download Roster), in_tab (drop the top border
+(a "Download Grades" CSV button beside Download Roster), hide_roster_download (no Download
+Roster button, for a viewer the grade page 404s for), in_tab (drop the top border
 under a tab strip) and header_actions (a
 template rendered on the left of the card header, e.g. CE period controls).
 {% endcomment %}
@@ -9,7 +10,7 @@ template rendered on the left of the card header, e.g. CE period controls).
   <div class="card-header d-flex justify-content-between align-items-start">
     <div>{% if header_actions %}{% include header_actions %}{% endif %}</div>
     <div class="text-nowrap ml-3">
-      <a class="btn btn-sm btn-primary" href="{{ grid.post_url }}?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;Download Roster</a>
+      {% if not hide_roster_download %}<a class="btn btn-sm btn-primary" href="{{ grid.post_url }}?action=download_roster_pdf"><i class="fa fa-file-pdf"></i>&nbsp;Download Roster</a>{% endif %}
       {% if grades_download_url and grid.has_periods %}<a class="btn btn-sm btn-primary ml-2" href="{{ grades_download_url }}"><i class="fa fa-file-csv"></i>&nbsp;Download Grades</a>{% endif %}
     </div>
   </div>

@@ -299,6 +299,7 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
         regs = [row['registration'] for row in ctx['grid']['rows']]
         self.assertEqual(regs, [self.mine])
         self.assertFalse(ctx['grid']['can_submit'])
+        self.assertFalse(ctx['hide_roster_download'])
 
     def test_tab_for_admin_off_the_section_shows_only_own_students(self):
         # highschool_admin may show the class page through hosted_or_own_students
@@ -318,6 +319,14 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
         self.assertFalse(ctx['grid']['can_submit'])
         self.assertIsNone(ctx['grid']['editable_period'])  # no grade entry
         self.assertIsNone(ctx['grades_download_url'])
+        self.assertTrue(ctx['hide_roster_download'])
+        from django.template.loader import render_to_string
+        html = render_to_string('grades/partials/_grade_grid.html', ctx)
+        self.assertNotIn('download_roster_pdf', html)
+        self.assertNotIn('download_grades', html)
+        self.assertIn('Ownerson', html)
+        self.assertNotIn('Primarydottir', html)
+        self.assertNotIn('Secondaryson', html)
 
     def test_tab_for_admin_off_the_section_with_no_students_is_empty(self):
         from ..tabs import hs_admin_grades_tab
