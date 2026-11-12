@@ -24,6 +24,8 @@ cis#154 widens it to a section's secondary high schools: an admin of a
 secondary school (and none of the primary) gets in, but the grid, the CSV, the
 roster PDF and any POST cover only students of their own schools, and they
 cannot submit the class's period. A primary-school admin keeps the whole class.
+An admin on none of the section's schools 404s here; on the class page's
+Grades tab they see only their own students, read-only (highschool_admin#28).
 See ``admin_scope``.
 
 Every HS admin of a school on the section sees its grades. Entering and
@@ -78,18 +80,18 @@ def admin_scope(request, section):
 
     ``on_section``: one of their schools is the section's primary or a
     secondary school. ``highschool_ids`` follows highschool_admin's
-    ``roster_school_ids``: only when they reach the section as a SECONDARY
-    school (and not the primary) are they narrowed -- to their schools that
-    are on the section, so a student from an unrelated school CE-enrolled
-    into it stays hidden. Otherwise ``None``, the whole class as before
-    cis#154: a primary-school admin, or one who sees the class page through
-    another highschool_admin rule (e.g. hosted_or_own_students).
+    ``roster_school_ids``: ``None`` (the whole class) only for an admin at the
+    primary school. A SECONDARY school's admin is narrowed to their schools
+    on the section, so a student from an unrelated school CE-enrolled into it
+    stays hidden. An admin off the section -- one highschool_admin lets in
+    through hosted_or_own_students (highschool_admin#28) -- is narrowed to
+    all their schools.
     """
     _, highschools = _hs_admin_context(request)
     admin_ids = set(highschools.values_list('id', flat=True))
     on_section = admin_ids.intersection(section_highschool_ids(section))
     if not on_section:
-        return False, None
+        return False, sorted(admin_ids, key=str)
     if section.highschool_id in admin_ids:
         return True, None
     return True, sorted(on_section, key=str)

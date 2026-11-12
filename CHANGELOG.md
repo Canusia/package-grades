@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.1
+
+### Fixed
+
+- **HS admin Grades tab showed the whole class under `hosted_or_own_students`**
+  (package-highschool_admin#28, FERPA). An HS admin who sees a class only because
+  their own students are in it (their school is neither the primary nor a
+  secondary school) now sees only their own students' grades on the class page's
+  Grades tab, read-only and without the Download Grades link. Before, the tab
+  listed every student in the class. Primary and secondary-school admins are
+  unchanged. `views.hs_admin.admin_scope()` now returns the admin's schools
+  instead of `None` for this path.
+
 ## 1.4.0
 
 ### Added

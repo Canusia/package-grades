@@ -129,17 +129,22 @@ def hs_admin_grades_tab(request, record):
     from .services.grade_grid import build_grid
     from .views.hs_admin import acting_schools, admin_scope, hs_admin_grades_intro
 
-    # A secondary-school admin (cis#154) sees only their students; a primary
-    # admin, or one highschool_admin let in by another rule, the whole class.
-    _on_section, scope = admin_scope(request, record)
+    # Only a primary-school admin sees the whole class. A secondary-school
+    # admin (cis#154) sees their students; one highschool_admin let in only
+    # because their students are in the class (hosted_or_own_students,
+    # highschool_admin#28) sees those students read-only -- the grade view
+    # and its CSV 404 for them, so no entry and no download link.
+    on_section, scope = admin_scope(request, record)
     post_url = reverse('grades_highschool_admin:class_section_grade', args=[record.id])
     next_url = reverse('highschool_admin:class_section', args=[record.id]) + '#grades'
+    can_edit = on_section and hs_admin_can_submit_grades(
+        request.user, record, acting_schools(record, scope))
     return {'grid': build_grid(record, post_url=post_url, next_url=next_url,
-                               allow_edit=hs_admin_can_submit_grades(
-                                   request.user, record, acting_schools(record, scope)),
-                               highschool_ids=scope),
+                               allow_edit=can_edit, highschool_ids=scope),
             'grades_intro': hs_admin_grades_intro(),
-            'grades_download_url': post_url + '?action=download_grades', 'in_tab': True}
+            'grades_download_url': (post_url + '?action=download_grades'
+                                    if on_section else None),
+            'in_tab': True}
 
 
 @register(ce_class_section_tabs, 'tab', slug='grades', title='Grades', order=35,

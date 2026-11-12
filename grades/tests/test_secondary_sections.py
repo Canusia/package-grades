@@ -300,17 +300,32 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
         self.assertEqual(regs, [self.mine])
         self.assertFalse(ctx['grid']['can_submit'])
 
-    def test_tab_for_admin_off_the_section_keeps_whole_class(self):
-        # highschool_admin may show the class page through another rule
-        # (hosted_or_own_students); the tab then lists the class as before #154.
+    def test_tab_for_admin_off_the_section_shows_only_own_students(self):
+        # highschool_admin may show the class page through hosted_or_own_students
+        # (highschool_admin#28): the admin's school is neither the primary nor
+        # a secondary school, but one of its students is in the class. They see
+        # only that student, read-only, with no CSV link (that URL 404s for them).
+        from ..tabs import hs_admin_grades_tab
+        own_hs = f.highschool()
+        own = f.registration(self.section, highschool_obj=own_hs, last_name='Ownerson')
+        request = RequestFactory().get('/')
+        request.user = self.admin
+        f.grant_submit_grades(self.admin, own_hs)
+        with self._schools([own_hs]):
+            ctx = hs_admin_grades_tab(request, self.section)
+        regs = [row['registration'] for row in ctx['grid']['rows']]
+        self.assertEqual(regs, [own])
+        self.assertFalse(ctx['grid']['can_submit'])
+        self.assertIsNone(ctx['grid']['editable_period'])  # no grade entry
+        self.assertIsNone(ctx['grades_download_url'])
+
+    def test_tab_for_admin_off_the_section_with_no_students_is_empty(self):
         from ..tabs import hs_admin_grades_tab
         request = RequestFactory().get('/')
         request.user = self.admin
         with self._schools([f.highschool()]):
             ctx = hs_admin_grades_tab(request, self.section)
-        regs = {row['registration'] for row in ctx['grid']['rows']}
-        self.assertEqual(regs, {self.mine, self.theirs})
-        self.assertTrue(ctx['grid']['can_submit'])
+        self.assertEqual(ctx['grid']['rows'], [])
 
     def test_narrowed_to_schools_on_the_section(self):
         # The admin also runs a school that is not on the section; a student
@@ -334,7 +349,7 @@ class SecondaryHighSchoolAdminGradesTests(_NoLoginHistory, GradesTestCase):
             ([self.primary_hs], (True, None)),
             ([self.primary_hs, self.secondary_hs], (True, None)),
             ([self.secondary_hs, stray_hs], (True, [self.secondary_hs.id])),
-            ([stray_hs], (False, None)),
+            ([stray_hs], (False, [stray_hs.id])),  # highschool_admin#28
         ]
         for schools, expected in cases:
             with self._schools(schools):
