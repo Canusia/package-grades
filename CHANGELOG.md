@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0
+
+- Grades pages follow renamed menu items (#21): instructor Class Grades (list + class grade page), student My Courses, CE Grades → SIS and Grade Summary.
+- Page text from `<menu item>_blurb`; HS admin class grade page reads `class_blurb` then `classes_blurb`. Placeholders hidden on instructor/HS admin pages.
+- Uses cis's shared `cis.portal_text` (cis v0.2.10a) when present. No migrations.
+
 ## 1.4.1
 
 ### Fixed
