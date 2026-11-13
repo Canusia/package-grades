@@ -209,6 +209,7 @@ class InstructorPagesTests(_LoginHistoryOff, GradesTestCase):
         resp, blurbs = self._get(url, renamed={('instructor', 'grades'): 'Final Marks'},
                                  blurb='<p>Saved text</p>')
         self.assertContains(resp, '>Final Marks</a>')
+        self.assertContains(resp, '<title>Final Marks</title>')
         self.assertContains(resp, '<p>Saved text</p>')
         self.assertEqual(blurbs, [('instructor', 'grades')])
 
@@ -216,6 +217,7 @@ class InstructorPagesTests(_LoginHistoryOff, GradesTestCase):
         url = reverse('instructor:class_section_grade', args=[self.section.id])
         resp, _ = self._get(url)
         self.assertContains(resp, '>Grades</a>')
+        self.assertContains(resp, '<title>Class Grades</title>')
 
 
 class HSAdminPageTests(_LoginHistoryOff, GradesTestCase):

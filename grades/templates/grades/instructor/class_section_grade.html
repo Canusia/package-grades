@@ -1,5 +1,5 @@
 {% extends "cis/logged-base.html" %}
-{% block title %}Class Grades{% endblock %}
+{% block title %}{{ page_title|default:'Class Grades' }}{% endblock %}
 {% load static %}
 {% block body %}
 <main>

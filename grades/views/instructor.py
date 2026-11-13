@@ -67,10 +67,13 @@ def class_section_grade(request, record_id):
     tabs = grade_page_tabs(request, section, render_to_string(
         'grades/partials/_grade_grid.html',
         {'grid': grid, 'grades_download_url': download, 'in_tab': True}, request=request))
+    renamed = _renamed_grades_item()
     return render(request, 'grades/instructor/class_section_grade.html', {
         'menu': draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor'),
         'class_section': section,
-        'grades_heading': _renamed_grades_item() or 'Grades',
+        'grades_heading': renamed or 'Grades',
+        # Browser tab follows a renamed Grades item too (#21 review).
+        'page_title': renamed or 'Class Grades',
         'intro': page_blurb('instructor', 'grades'),
         'page_messages': get_page_messages('instructor', 'grades', request),
         'grid': grid,
