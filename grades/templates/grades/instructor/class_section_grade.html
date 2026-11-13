@@ -7,7 +7,7 @@
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'instructor:dashboard' %}">Home</a></li>
-      <li class="breadcrumb-item"><a href="{% url 'instructor:grades' %}">Grades</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'instructor:grades' %}">{{ grades_heading|default:'Grades' }}</a></li>
       <li class="breadcrumb-item active" aria-current="page">{{ class_section }}</li>
     </ol>
   </nav>

@@ -1,8 +1,8 @@
 {% extends "instructor/base_instructor.html" %}
-{% block title %}Grades{% endblock %}
+{% block title %}{{ page_title|default:'Grades' }}{% endblock %}
 {% block page_header %}
 {{ intro|default_if_none:''|safe }}
-{% include "instructor/partials/_breadcrumb.html" with page_name="Class Grades" %}
+{% include "instructor/partials/_breadcrumb.html" with page_name=heading|default:'Class Grades' %}
 {% endblock %}
 {% block content %}
 {% if page_messages %}<div class="row">{% include 'cis/page_messages.html' %}</div>{% endif %}

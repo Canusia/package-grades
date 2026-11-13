@@ -6,7 +6,7 @@
 
 {% block page_header %}
 {{intro|safe}}
-{% include "student/partials/_breadcrumb.html" with page_name="My Courses" %}
+{% include "student/partials/_breadcrumb.html" with page_name=heading|default:'My Courses' %}
 {% endblock %}
 
 {% block content %}

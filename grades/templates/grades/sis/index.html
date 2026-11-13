@@ -1,9 +1,9 @@
 {% extends "cis/logged-base.html" %}
-{% block title %}Grades → SIS{% endblock %}
+{% block title %}{{ heading|default:'Grades → SIS' }}{% endblock %}
 {% block body %}
 <main>
   <div class="d-flex align-items-center mb-2">
-    <h1 class="h3 mb-0 text-gray-800">Grades → SIS</h1>
+    <h1 class="h3 mb-0 text-gray-800">{{ heading|default:'Grades → SIS' }}</h1>
     {% if settings_url %}<a class="btn btn-sm btn-outline-secondary ml-auto" href="{{ settings_url }}"><i class="fas fa-cog"></i> Settings</a>{% endif %}
   </div>
   {% if not configured %}

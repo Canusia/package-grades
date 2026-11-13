@@ -6,7 +6,7 @@ from cis.menu import draw_menu, INSTRUCTOR_MENU
 from cis.models.term import Term
 from cis.models.section import ClassSection
 from cis.page_messages import get_page_messages
-from ..compat import portal_text
+from ..portal_text import page_blurb, page_heading
 from ..instructor_tabs import grade_page_tabs
 from ..services.window import (
     chosen_term_id, grade_terms as grade_terms_service, selected_term_ids,
@@ -18,6 +18,11 @@ from ..settings.class_section_grades import class_section_grades
 from .grade_entry import handle_grade_post
 
 
+def _renamed_grades_item():
+    """The label staff gave the instructor Grades menu item, or None (#21)."""
+    return page_heading('instructor', 'grades', None)
+
+
 def class_grades(request):
     teacher_sections = ClassSection.objects.filter(
         teacher__user=request.user, status='A', term_id__in=grade_terms_service())
@@ -27,9 +32,12 @@ def class_grades(request):
         'term', 'course__cohort', 'highschool').order_by(
         'term__code', 'course__cohort__designator', 'course__catalog_number', 'class_number')
     settings = class_section_grades.from_db()
+    renamed = _renamed_grades_item()
     return render(request, 'grades/instructor/grades.html', {
         'menu': draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor'),
-        'intro': portal_text('instructor').get('grades_blurb', ''),
+        'heading': renamed or 'Class Grades',
+        'page_title': renamed or 'Grades',
+        'intro': page_blurb('instructor', 'grades'),
         'grades_intro': settings.get('grades_intro', ''),
         'page_messages': get_page_messages('instructor', 'grades', request),
         'terms': Term.objects.filter(pk__in=available).order_by('-code'),
@@ -62,7 +70,8 @@ def class_section_grade(request, record_id):
     return render(request, 'grades/instructor/class_section_grade.html', {
         'menu': draw_menu(INSTRUCTOR_MENU, 'grades', '', 'instructor'),
         'class_section': section,
-        'intro': portal_text('instructor').get('grades_blurb', ''),
+        'grades_heading': _renamed_grades_item() or 'Grades',
+        'intro': page_blurb('instructor', 'grades'),
         'page_messages': get_page_messages('instructor', 'grades', request),
         'grid': grid,
         'grades_download_url': download,

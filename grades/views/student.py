@@ -13,6 +13,7 @@ from cis.settings.student_portal import student_portal as portal_lang
 from student.views.decorators import verify_account_complete
 from student.views.utils import get_current_student
 
+from ..portal_text import page_blurb, page_heading
 from ..services import student_table
 
 
@@ -30,7 +31,12 @@ def grades(request):
     """
     student = get_current_student(request)
 
-    template = Template(portal_lang(request).from_db().get('grades_blurb', 'Change me'))
+    text = page_blurb('student', 'grades', default=None)
+    if text is None:
+        # Nothing but blanks or an untouched placeholder: show what the page
+        # always showed (the stored placeholder, else "Change me").
+        text = (portal_lang(request).from_db() or {}).get('grades_blurb', 'Change me')
+    template = Template(text)
     context = Context({
         'request': request,
         'show_message': True if request.GET.get('show_message', None) else False
@@ -42,6 +48,7 @@ def grades(request):
         'grades/student/grades.html',
         {
             'intro': intro,
+            'heading': page_heading('student', 'grades', 'My Courses'),   # #21
             'student': student,
             'grades_visible': _setting('student_grades_visible'),
             'transcript_enabled': _setting('student_transcript_enabled'),

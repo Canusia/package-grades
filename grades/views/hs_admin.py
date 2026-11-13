@@ -40,15 +40,13 @@ from django.urls import reverse
 
 from cis.menu import draw_menu, HS_ADMIN_MENU
 from cis.models.section import ClassSection
-from cis.settings.highschool_admin_portal import (
-    highschool_admin_portal as portal_lang,
-)
 
 from ..services.gating import hs_admin_can_submit_grades
 from ..services.grade_csv import grades_csv_response
 from ..compat import section_highschool_ids
 from ..services.grade_grid import build_grid
 from ..services.roster import roster_pdf_response
+from ..portal_text import page_blurb
 from .grade_entry import handle_grade_post
 
 
@@ -142,7 +140,9 @@ def class_section_grade(request, record_id):
         return handle_grade_post(request, section, redirect_url=tab, highschool_ids=scope)
     return render(request, 'grades/hs_admin/class_section_grade.html', {
         'menu': menu, 'class_section': section,
-        'intro': portal_lang(request).from_db().get('class_blurb', ''),
+        # The class detail page's text (highschool_admin reads the same keys):
+        # grades adds no HS admin menu item of its own (#21).
+        'intro': page_blurb('highschool_admin', 'class', legacy_keys=('classes_blurb',)),
         'grades_intro': hs_admin_grades_intro(),
         'grades_download_url': here + '?action=download_grades',
         'grid': build_grid(section, post_url=here, next_url=here, allow_edit=can_edit,

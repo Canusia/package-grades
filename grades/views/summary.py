@@ -15,6 +15,7 @@ from cis.models.term import Term
 
 from ..compat import picker_queryset
 from ..models import GradingPeriod
+from ..portal_text import page_heading
 from ..services.csv_safe import safe_cell
 from ..services.summary import remind, summarize
 from ..services.window import chosen_term_id, grade_terms, selected_term_ids
@@ -63,8 +64,11 @@ def summary(request):
                 r['last_notified_on'].strftime('%m/%d/%Y') if r['last_notified_on'] else '')])
         return response
 
+    renamed = page_heading('ce', 'grades_summary', None)   # #21
     return render(request, 'grades/ce/summary.html', {
         'menu': draw_menu(cis_menu, 'classes', 'grades_summary'),
+        'heading': renamed or 'Grade Summary',
+        'page_title': renamed or 'Grade Submission Summary',
         'terms': Term.objects.filter(pk__in=available).order_by('-code'),
         'selected_term_ids': selected, 'term_choice': chosen_term_id(request, available),
         'periods': periods, 'period': period,

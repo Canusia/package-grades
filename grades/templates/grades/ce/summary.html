@@ -1,11 +1,11 @@
 {% extends "cis/logged-base.html" %}
-{% block title %}Grade Submission Summary{% endblock %}
+{% block title %}{{ page_title|default:'Grade Submission Summary' }}{% endblock %}
 {% block body %}
 <main>
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="/">Home</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Grade Summary</li>
+      <li class="breadcrumb-item active" aria-current="page">{{ heading|default:'Grade Summary' }}</li>
     </ol>
   </nav>
   {% include 'cis/messages.html' %}

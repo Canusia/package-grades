@@ -22,6 +22,7 @@ from cis.utils import CIS_user_only
 
 from ..actions import grade_sis_actions
 from ..models import GradeSISSync, GradeSISSyncAttempt
+from ..portal_text import page_heading
 from ..serializers import SISRegistrationSerializer, SISSectionSerializer
 from ..services import sis_push
 from ..services.roster import roster_statuses
@@ -234,6 +235,7 @@ def sis_sync_page(request):
         # The sidebar is DB-settings driven; this only picks the highlight.
         'menu': draw_menu(None, 'classes', 'grades_sis_sync', 'ce'),
         'configured': sis_push.get_pusher() is not None,
+        'heading': page_heading('ce', 'grades_sis_sync', 'Grades → SIS'),   # #21
     }
     # The tenant's Ethos Settings overview holds the SIS push configuration.
     context['settings_url'] = (reverse('cis:settings_overview', args=['ethos'])
