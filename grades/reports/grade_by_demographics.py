@@ -21,7 +21,8 @@ from ..compat import (
 )
 from ..models import GradingPeriod
 from ..services.report_marks import (
-    period_mark_annotation, periods_outside_terms_error, selected_period,
+    gpa_by_group, period_mark_annotation, periods_outside_terms_error, report_letters,
+    selected_period,
 )
 from ..settings.class_section_grades import class_section_grades
 
@@ -223,9 +224,6 @@ class grade_by_demographics(forms.Form):
         dimension = data.get('demographic_dimension')[0] if isinstance(data.get('demographic_dimension'), list) else data.get('demographic_dimension')
 
         # Get grade settings
-        grade_settings = class_section_grades.from_db()
-        grade_list = [g.strip() for g in grade_settings.get('grades', '').split(',') if g.strip()]
-        gpa_points = grade_settings.get('gpa_points', {})
 
         # Get the ORM field for the selected dimension
         dimension_field = self._get_dimension_field(dimension)
@@ -237,6 +235,10 @@ class grade_by_demographics(forms.Form):
         # Grade source: the chosen period's marks, else the final grade
         registrations = registrations.annotate(
             period_mark=period_mark_annotation(selected_period(data)))
+        # Grade columns and GPA follow each term's grade scale (services/scales.py).
+        period = selected_period(data)
+        grade_list = report_letters(registrations, period)
+        gpa = gpa_by_group(registrations, [dimension_field], period)
 
         # Aggregate by dimension with grade counts
         aggregations = {
@@ -326,13 +328,7 @@ class grade_by_demographics(forms.Form):
             row.append(f'{dfw_rate:.1f}')
 
             # Average GPA
-            total_points = 0
-            graded_count = 0
-            for grade, count in grade_counts.items():
-                if grade in gpa_points and count > 0:
-                    total_points += gpa_points[grade] * count
-                    graded_count += count
-            avg_gpa = (total_points / graded_count) if graded_count > 0 else 0
+            avg_gpa = gpa.get((row_data[dimension_field],), 0)
             row.append(f'{avg_gpa:.2f}')
 
             writer.writerow(row)

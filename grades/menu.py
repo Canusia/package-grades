@@ -14,6 +14,8 @@ if menu is not None:
                   parent='classes', order=15)
     menu.register('ce', 'grades_summary', 'Grade Summary', url='grades_ce:summary',
                   parent='classes', order=18)
+    menu.register('ce', 'grade_scales', 'Grade Scales', url='grades_ce:grade_scales',
+                  parent='classes', order=19)
     # Live-menu label/icon; migration 0006 first seeded "Grades" / graduation-cap.
     menu.register('instructor', 'grades', 'Class Grades', url='instructor:grades',
                   icon='fas fa-fw fa-list-ul', order=35)

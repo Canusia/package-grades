@@ -17,6 +17,8 @@ from cis.utils import user_has_cis_role
 from ..views.ce import (
     ce_class_section_grade, delete_grading_period, manage_grading_period,
     reopen_period)
+from ..views.scales import (
+    delete_grade_scale, duplicate_grade_scale, edit_grade_scale, grade_scales)
 from ..views.summary import summary, summary_remind
 from ..views.sis_sync import (
     SISRegistrationViewSet, SISSectionViewSet, sis_action, sis_sync_page)
@@ -49,6 +51,13 @@ urlpatterns = [
          ce_only(reopen_period), name='reopen_period'),
     path('summary/', ce_only(summary), name='summary'),
     path('summary/remind/', ce_only(summary_remind), name='summary_remind'),
+    path('scales/', ce_only(grade_scales), name='grade_scales'),
+    path('scales/add/', ce_only(edit_grade_scale), name='add_grade_scale'),
+    path('scales/<uuid:record_id>/', ce_only(edit_grade_scale), name='edit_grade_scale'),
+    path('scales/<uuid:record_id>/duplicate/', ce_only(duplicate_grade_scale),
+         name='duplicate_grade_scale'),
+    path('scales/<uuid:record_id>/delete/', ce_only(delete_grade_scale),
+         name='delete_grade_scale'),
 ]
 
 # Grades → SIS page. The feeds gate themselves (CIS role + configured pusher);

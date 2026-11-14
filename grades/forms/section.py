@@ -6,7 +6,7 @@ from django.forms.formsets import BaseFormSet
 
 from cis.models.section import StudentRegistration
 from ..services.periods import save_mark
-from ..settings.class_section_grades import class_section_grades
+from ..services.scales import scale_for_period
 
 
 class ClassSectionGradeForm(forms.Form):
@@ -24,16 +24,18 @@ class ClassSectionGradeForm(forms.Form):
         choices=()
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, scale=None, **kwargs):
         super().__init__(*args, **kwargs)
-
-        grade_settings = class_section_grades.from_db()
-
-        grades = grade_settings.get('grades', '').split(',')
-        grade_choices = [('', '')] + [
-            (grade, grade) for grade in grades
-        ]
-        self.fields['grade'].choices = grade_choices
+        # The period's grade scale (services/scales.py); the formset resolves
+        # it once and hands it to every row.
+        scale = scale if scale is not None else scale_for_period(None)
+        letters = scale.letters()
+        # A saved mark no longer on the scale stays selectable, so re-saving
+        # the page never blanks it.
+        current = (self.initial.get('grade') or '').strip()
+        if current and current not in letters:
+            letters = letters + [current]
+        self.fields['grade'].choices = [('', '')] + [(g, g) for g in letters]
 
 
 class ClassSectionGradeFormSet(BaseFormSet):
@@ -51,7 +53,13 @@ class ClassSectionGradeFormSet(BaseFormSet):
         self.class_section = class_section
         self.period = period
         self.user = user
+        self.scale = scale_for_period(period)
         super().__init__(*args, **kwargs)
+
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs['scale'] = self.scale
+        return kwargs
 
     def _allowed_registration_ids(self):
         """Registration ids the view offered for grading, as strings.

@@ -24,6 +24,81 @@ from django.db import models
 from simple_history.models import HistoricalRecords
 
 
+class GradeScale(models.Model):
+    """A named set of grades a grading period offers.
+
+    Each campus has at most one default scale; a scale with no campus serves
+    the whole deployment (single-campus sites, or a shared fallback). A period
+    with no scale of its own uses the default -- see services/scales.py, the
+    one place that resolves which scale applies.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, default='')
+    campus = models.ForeignKey(
+        'cis.Campus', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='grade_scales')
+    is_default = models.BooleanField(
+        default=False,
+        help_text='Periods with no scale of their own use the default scale.')
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Inactive scales cannot be picked for a grading period.')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['campus', 'name'], condition=models.Q(campus__isnull=False),
+                name='grades_gradescale_unique_name_per_campus'),
+            models.UniqueConstraint(
+                fields=['name'], condition=models.Q(campus__isnull=True),
+                name='grades_gradescale_unique_name_global'),
+            models.UniqueConstraint(
+                fields=['campus'],
+                condition=models.Q(is_default=True, campus__isnull=False),
+                name='grades_gradescale_one_default_per_campus'),
+            models.UniqueConstraint(
+                fields=['is_default'],
+                condition=models.Q(is_default=True, campus__isnull=True),
+                name='grades_gradescale_one_global_default'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class GradeScaleEntry(models.Model):
+    """One grade on a scale."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scale = models.ForeignKey(GradeScale, on_delete=models.CASCADE, related_name='entries')
+    grade = models.CharField(max_length=30)
+    points = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='GPA points. Blank means the grade does not count toward GPA.')
+    sequence = models.PositiveIntegerField(default=0)
+    asks_last_attendance = models.BooleanField(
+        default=False,
+        help_text=('As a final grade, this grade needs a last date of attendance, '
+                   'which is sent to the SIS with it.'))
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ['scale', 'sequence', 'grade']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['scale', 'grade'], name='grades_gradescaleentry_unique_grade'),
+        ]
+
+    def __str__(self):
+        return self.grade
+
+
 class GradingPeriod(models.Model):
     """One grade collection within a term.
 
@@ -76,6 +151,11 @@ class GradingPeriod(models.Model):
         ),
     )
 
+    grade_scale = models.ForeignKey(
+        GradeScale, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='periods',
+        help_text='Blank uses the default grade scale.')
+
     visible_to_students = models.BooleanField(
         default=False,
         help_text=(
@@ -106,6 +186,11 @@ class GradingPeriod(models.Model):
 
     def __str__(self):
         return f'{self.term} - {self.name}'
+
+    def scale(self):
+        """The scale this period offers: its own, or the default (services/scales.py)."""
+        from .services.scales import scale_for_period
+        return scale_for_period(self)
 
     @classmethod
     def overlapping(cls, term, opens_on, due_on, exclude_pk=None):
@@ -257,6 +342,8 @@ class GradeSISSync(models.Model):
         blank=True, null=True, related_name='+')
     last_error = models.TextField(blank=True, default='')
     grade_changed_at = models.DateTimeField(blank=True, null=True)
+    # The last date of attendance the SIS last accepted with the grade, if any.
+    sent_last_attendance = models.DateField(blank=True, null=True)
 
     def __str__(self):
         return f'{self.registration_id}: {self.status}'
@@ -277,3 +364,26 @@ class GradeSISSyncAttempt(models.Model):
 
     class Meta:
         ordering = ['-attempted_at']
+
+
+class FinalGradeAttendance(models.Model):
+    """A registration's last date of attendance, kept with its final grade.
+
+    Asked for when the final grade's scale entry has `asks_last_attendance`,
+    and sent to the SIS with the grade. Lives here, not on cis's
+    StudentRegistration, so cis needs no change.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    registration = models.OneToOneField(
+        'cis.StudentRegistration', on_delete=models.CASCADE,
+        related_name='final_grade_attendance')
+    last_attendance_on = models.DateField()
+    entered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        blank=True, null=True, related_name='+')
+    entered_at = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    def __str__(self):
+        return f'{self.registration_id}: {self.last_attendance_on}'

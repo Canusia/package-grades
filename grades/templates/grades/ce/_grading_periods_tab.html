@@ -34,6 +34,7 @@
                         <th>Opens On</th>
                         <th>Due On</th>
                         <th>Final</th>
+                        <th>Grade Scale</th>
                         <th>Reminder</th>
                         <th>Remind Before Due</th>
                         <th>Students See</th>
@@ -59,6 +60,7 @@
                             <span class="text-muted">Interim</span>
                             {% endif %}
                         </td>
+                        <td>{% if period.grade_scale %}{{ period.grade_scale.name }}{% else %}<span class="text-muted">Default</span>{% endif %}</td>
                         <td>
                             {% if period.reminder_frequency_days %}
                             Every {{ period.reminder_frequency_days }} day{{ period.reminder_frequency_days|pluralize }}
@@ -86,7 +88,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" class="text-center text-muted p-4">
+                        <td colspan="10" class="text-center text-muted p-4">
                             No grading periods defined for this term. Grades continue to be
                             collected using the single submission window from
                             <em>Class Grades Settings</em> until a period is added here.

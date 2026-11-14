@@ -121,16 +121,13 @@ def chosen_term_id(request, available_ids):
 
 
 def grade_scale():
-    """The configured grade scale as a list of grade strings.
+    """The current campus's default grade scale as a list of grade strings.
 
-    Parses the comma-separated ``grades`` setting the same way
-    ``grades/forms/section.py`` does today.
+    Reached by cis through ``cis.integrations.grades.grade_scale()``. A
+    period's own scale comes from ``services.scales.scale_for_period``.
     """
-    from ..settings.class_section_grades import class_section_grades
-
-    settings = class_section_grades.from_db()
-
-    return settings.get('grades', '').split(',')
+    from .scales import default_scale
+    return default_scale().letters()
 
 
 def submitted_grade(registration):

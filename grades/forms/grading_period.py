@@ -34,6 +34,7 @@ class GradingPeriodForm(forms.ModelForm):
             'opens_on',
             'due_on',
             'is_final',
+            'grade_scale',
             'reminder_frequency_days',
             'remind_days_before_due',
             'visible_to_students',
@@ -44,6 +45,7 @@ class GradingPeriodForm(forms.ModelForm):
             'opens_on': 'Opens On',
             'due_on': 'Due On',
             'is_final': 'Final Grade Collection',
+            'grade_scale': 'Grade Scale',
             'reminder_frequency_days': 'Reminder Frequency (days)',
             'remind_days_before_due': 'Remind Days Before Due',
             'visible_to_students': 'Visible to Students',
@@ -61,6 +63,40 @@ class GradingPeriodForm(forms.ModelForm):
         self.instance.term = term
         # 0 (off) is the model default; an omitted field means off, not an error.
         self.fields['remind_days_before_due'].required = False
+        self._init_grade_scale()
+
+    def _term_campus(self):
+        ay = getattr(self.term, 'academic_year', None)
+        return getattr(ay, 'campus', None)
+
+    def _init_grade_scale(self):
+        """Active scales for the term's campus (plus the one already picked);
+        blank means the default, named so staff know what they get."""
+        from django.db.models import Q
+        from ..services.scales import default_scale, scales_for_campus
+        field = self.fields['grade_scale']
+        current = self.instance.grade_scale_id if self.instance.pk else None
+        field.queryset = scales_for_campus(self._term_campus()).filter(
+            Q(is_active=True) | Q(pk=current))
+        field.required = False
+        field.empty_label = f'Default ({default_scale(self._term_campus()).name})'
+        field.help_text = 'The grades instructors can pick in this period.'
+
+    def clean_grade_scale(self):
+        """Refuse a scale that would drop grades already entered here."""
+        from ..services.scales import default_scale, stranded_marks
+        new = self.cleaned_data.get('grade_scale')
+        if not (self.instance and self.instance.pk) or new == self.instance.grade_scale:
+            return new
+        letters = (new.entries.values_list('grade', flat=True) if new is not None
+                   else default_scale(self._term_campus()).letters())
+        stranded = stranded_marks(self.instance, list(letters))
+        if stranded:
+            listed = ', '.join(f'{g} ({n})' for g, n in sorted(stranded.items()))
+            raise forms.ValidationError(
+                f'Grades already entered in this period are not on that scale: {listed}. '
+                'Add them to the scale first, or keep the current scale.')
+        return new
 
     def _siblings(self):
         """Other periods in this term (excludes the record being edited)."""

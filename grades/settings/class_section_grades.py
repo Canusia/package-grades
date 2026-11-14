@@ -2,7 +2,7 @@ import json, datetime, math
 from django import forms
 from django.conf import settings
 from django.http import JsonResponse
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
@@ -67,6 +67,18 @@ class GradeScaleField(forms.CharField):
         if isinstance(value, (list, dict)):
             return json.dumps(value)
         return super().prepare_value(value)
+
+
+def grade_scales_note():
+    """Where the grade scale is edited now (grade scales are records)."""
+    from django.utils.html import format_html
+    try:
+        url = reverse('grades_ce:grade_scales')
+    except Exception:
+        return ''
+    return format_html(
+        '<div class="alert alert-info">Grades and GPA points are set on '
+        '<a href="{}">Grade Scales</a>, and each grading period can use its own scale.</div>', url)
 
 
 def hs_admin_access_note():
@@ -600,8 +612,7 @@ class class_section_grades(SettingForm):
         # Include grade settings JS via crispy forms layout; fields grouped
         # under headers (#17), any field not listed here appended at the end.
         groups = [
-            ('General', ['is_active', 'debug_email_list', 'grade_scale',
-                         'registration_status']),
+            ('General', ['is_active', 'debug_email_list', 'registration_status']),
             ('Roster Confirmation', ['require_roster_confirmation',
                                      'roster_not_confirmed_message']),
             ('Grades-Due Reminders', ['send_grade_reminders', 'cron',
@@ -629,6 +640,9 @@ class class_section_grades(SettingForm):
                 items.append(HTML(hs_admin_access_note()))
             items += names
             placed.update(names)
+            if title == 'General':
+                items.append(HTML(grade_scales_note()))
+        placed.add('grade_scale')
         items += [n for n in self.fields if n not in placed]
         self.helper.layout = Layout(*items)
 

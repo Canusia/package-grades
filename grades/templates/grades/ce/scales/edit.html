@@ -1,0 +1,80 @@
+{% extends "cis/logged-base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}{{ heading }}{% endblock %}
+{% block body %}
+<main>
+  <nav aria-label="breadcrumb"><ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'grades_ce:grade_scales' %}">Grade Scales</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ heading }}</li>
+  </ol></nav>
+  {% include 'cis/messages.html' %}
+  {% if periods %}<div class="alert alert-info">Used by {{ periods }} grading period{{ periods|pluralize }}.
+    Grades already entered for students can't be removed or renamed.</div>{% endif %}
+  <form method="post" id="grade-scale-form">
+    {% csrf_token %}
+    <div class="card mb-3"><div class="card-body">
+      {{ form|crispy }}
+    </div></div>
+
+    <div class="card mb-3"><div class="card-body">
+      <h5 class="mb-1">Grades</h5>
+      <p class="small text-muted">Drag rows to set the order instructors see. Leave Points blank for a grade that
+        doesn't count toward GPA. "Asks for last date of attendance" applies to final grades only: the instructor
+        must enter the date, and it is sent to the SIS with the grade.</p>
+      {% if formset.non_form_errors %}<div class="alert alert-danger">{% for e in formset.non_form_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+      {{ formset.management_form }}
+      <table class="table table-sm" style="max-width: 760px;">
+        <thead><tr><th style="width:2rem"></th><th>Grade</th><th>Points</th><th>Asks for last date of attendance</th><th>Remove</th></tr></thead>
+        <tbody id="scale-entries">
+          {% for f in formset %}
+          <tr class="scale-entry">
+            <td class="text-muted drag-handle" style="cursor:move" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></td>
+            <td>{{ f.id }}{{ f.sequence }}{{ f.grade }}{% for e in f.grade.errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}
+              {% if f.instance.pk and f.instance.grade in in_use %}<div class="small text-muted">In use</div>{% endif %}</td>
+            <td>{{ f.points }}{% for e in f.points.errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}</td>
+            <td class="text-center">{{ f.asks_last_attendance }}</td>
+            <td class="text-center">{{ f.DELETE }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <template id="scale-entry-template">
+        <tr class="scale-entry">
+          <td class="text-muted drag-handle" style="cursor:move" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></td>
+          <td>{{ formset.empty_form.id }}{{ formset.empty_form.sequence }}{{ formset.empty_form.grade }}</td>
+          <td>{{ formset.empty_form.points }}</td>
+          <td class="text-center">{{ formset.empty_form.asks_last_attendance }}</td>
+          <td class="text-center">{{ formset.empty_form.DELETE }}</td>
+        </tr>
+      </template>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="add-grade"><i class="fas fa-plus"></i> Add Grade</button>
+    </div></div>
+
+    <button type="submit" class="btn btn-primary">Save Grade Scale</button>
+    <a class="btn btn-link" href="{% url 'grades_ce:grade_scales' %}">Cancel</a>
+  </form>
+</main>
+<script>
+jQuery(function ($) {
+  var $body = $('#scale-entries');
+  var $total = $('#id_entries-TOTAL_FORMS');
+
+  function renumber() {
+    $body.find('tr.scale-entry').each(function (i) { $(this).find('input.entry-sequence').val(i); });
+  }
+  $('#add-grade').on('click', function () {
+    var n = parseInt($total.val(), 10);
+    var html = $('#scale-entry-template').html().replace(/__prefix__/g, n);
+    $body.append(html);
+    $total.val(n + 1);
+    renumber();
+    $body.find('tr.scale-entry:last input[name$="-grade"]').trigger('focus');
+  });
+  if ($.fn.sortable) {
+    $body.sortable({ handle: '.drag-handle', axis: 'y', update: renumber });
+  }
+  $('#grade-scale-form').on('submit', renumber);
+  renumber();
+});
+</script>
+{% endblock %}

@@ -20,7 +20,8 @@ from ..compat import (
 )
 from ..models import GradingPeriod
 from ..services.report_marks import (
-    period_mark_annotation, periods_outside_terms_error, selected_period,
+    gpa_by_group, period_mark_annotation, periods_outside_terms_error, report_letters,
+    selected_period,
 )
 from ..settings.class_section_grades import class_section_grades
 
@@ -135,13 +136,14 @@ class grade_by_course(forms.Form):
         registrations = self.get_result(data, user=getattr(task, 'created_by', None))
 
         # Get grade settings
-        grade_settings = class_section_grades.from_db()
-        grade_list = [g.strip() for g in grade_settings.get('grades', '').split(',') if g.strip()]
-        gpa_points = grade_settings.get('gpa_points', {})
 
         # Grade source: the chosen period's marks, else the final grade
         registrations = registrations.annotate(
             period_mark=period_mark_annotation(selected_period(data)))
+        # Grade columns and GPA follow each term's grade scale (services/scales.py).
+        period = selected_period(data)
+        grade_list = report_letters(registrations, period)
+        gpa = gpa_by_group(registrations, ['class_section__course__id'], period)
 
         # Aggregate by course with grade counts
         aggregations = {
@@ -233,13 +235,7 @@ class grade_by_course(forms.Form):
             row.append(f'{dfw_rate:.1f}')
 
             # Average GPA
-            total_points = 0
-            graded_count = 0
-            for grade, count in grade_counts.items():
-                if grade in gpa_points and count > 0:
-                    total_points += gpa_points[grade] * count
-                    graded_count += count
-            avg_gpa = (total_points / graded_count) if graded_count > 0 else 0
+            avg_gpa = gpa.get((row_data['class_section__course__id'],), 0)
             row.append(f'{avg_gpa:.2f}')
 
             writer.writerow(row)

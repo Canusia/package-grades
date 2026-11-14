@@ -1,0 +1,45 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block body %}
+<main>
+  <div class="d-flex align-items-center mb-2">
+    <h1 class="h3 mb-0 text-gray-800">{{ heading }}</h1>
+    <a class="btn btn-sm btn-primary ml-auto" href="{% url 'grades_ce:add_grade_scale' %}"><i class="fas fa-plus"></i> Add Grade Scale</a>
+  </div>
+  <p class="text-muted mb-3">A grading period offers the grades on its scale. Periods with no scale of their own use the default.
+    Pick a period's scale on the term's Grading Periods tab.</p>
+  {% include 'cis/messages.html' %}
+  <div class="card"><div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-striped" id="grade-scales-table">
+        <thead><tr><th>Name</th><th>Grades</th><th>Asks for last date of attendance</th><th>Grading periods</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><a href="{% url 'grades_ce:edit_grade_scale' row.record.id %}">{{ row.record.name }}</a>
+              {% if row.record.is_default %}<span class="badge badge-primary ml-1">Default</span>{% endif %}
+              {% if row.record.description %}<div class="small text-muted">{{ row.record.description }}</div>{% endif %}</td>
+            <td>{{ row.letters }}</td>
+            <td>{{ row.last_attendance|default:"–" }}</td>
+            <td>{{ row.periods }}</td>
+            <td>{% if row.record.is_active %}Active{% else %}<span class="text-muted">Inactive</span>{% endif %}</td>
+            <td class="text-right text-nowrap">
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'grades_ce:edit_grade_scale' row.record.id %}"><i class="fas fa-edit"></i> Edit</a>
+              <form method="post" action="{% url 'grades_ce:duplicate_grade_scale' row.record.id %}" class="d-inline">{% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="far fa-copy"></i> Duplicate</button></form>
+              {% if not row.record.is_default and not row.periods %}
+              <form method="post" action="{% url 'grades_ce:delete_grade_scale' row.record.id %}" class="d-inline"
+                    onsubmit="return confirm('Delete this grade scale?');">{% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash-alt"></i><span class="sr-only"> Delete</span></button></form>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-muted">No grade scales yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+</main>
+{% endblock %}
