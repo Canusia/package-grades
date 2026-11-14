@@ -1,15 +1,9 @@
 # Changelog
 
-## 1.6.0
+## Unreleased
 
 ### Added
 
-- **Grades → SIS: CRN and send-status filters** (EWU Zendesk #3222).
-  - Sections tab: new CRN column, a CRN filter (matches the start of the CRN, any case,
-    filters as you type), and a
-    Send Status filter (Has grades not sent / Has failed sends / Needs mirroring / All sent).
-  - Registrations tab: new CRN column and CRN filter. The Section dropdown labels show the CRN.
-  - The Registrations tab's default sort is found by column name, so new columns don't move it.
 - **Grade scales are records, assigned per grading period.**
   - New CE page **Classes → Grade Scales**: add, edit, duplicate and delete scales. Each grade
     has GPA points (blank = not counted toward GPA), an order (drag to reorder) and an
@@ -40,6 +34,18 @@
 - Check each campus's migrated "Standard" scale on Grade Scales.
 - To use last dates of attendance, tick "Asks for last date of attendance" on the grades that
   need it (e.g. F), and install ethos >= 1.5.0.
+
+## 1.6.0
+
+### Added
+
+- **Grades → SIS: CRN and send-status filters** (EWU Zendesk #3222).
+  - Sections tab: new CRN column, a CRN filter (matches the start of the CRN, any case,
+    filters as you type), and a
+    Send Status filter (Has grades not sent / Has failed sends / Needs mirroring / All sent).
+  - Registrations tab: new CRN column and CRN filter. The Section dropdown labels show the CRN.
+  - The Registrations tab's default sort is found by column name, so new columns don't move it.
+  - No migrations.
 
 ## 1.5.0
 
