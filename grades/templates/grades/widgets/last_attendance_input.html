@@ -1,0 +1,26 @@
+<div class="last-attendance-wrap mt-1" data-last-attendance-letters="{{ widget.letters }}">
+  <label class="small text-muted mb-0" for="{{ widget.attrs.id }}">Last date of attendance</label>
+  {% include "django/forms/widgets/input.html" %}
+</div>
+<script>
+(function () {
+  var wrap = document.currentScript && document.currentScript.previousElementSibling;
+  if (!wrap || wrap.dataset.lastAttendanceBound) { return; }
+  wrap.dataset.lastAttendanceBound = '1';
+  var letters = (wrap.dataset.lastAttendanceLetters || '').split(',').filter(Boolean);
+  var input = wrap.querySelector('input');
+  // The grade picker in the same table row (grade grid) or, outside a table,
+  // the same form (CE registration edit).
+  var scope = wrap.closest('tr') || wrap.closest('form') || document;
+  var grade = scope.querySelector('select[name$="grade"]');
+  function sync() {
+    var show = !!grade && letters.indexOf((grade.value || '').trim()) !== -1;
+    wrap.style.display = show ? '' : 'none';
+    if (!show && input && input.value) {
+      input.value = '';
+    }
+  }
+  if (grade) { grade.addEventListener('change', sync); }
+  sync();
+})();
+</script>

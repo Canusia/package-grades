@@ -5,6 +5,7 @@ from django import forms
 from django.forms.formsets import BaseFormSet
 
 from cis.models.section import StudentRegistration
+from ..services import last_attendance
 from ..services.periods import save_mark
 from ..services.scales import scale_for_period
 
@@ -24,8 +25,14 @@ class ClassSectionGradeForm(forms.Form):
         choices=()
     )
 
-    def __init__(self, *args, scale=None, **kwargs):
+    # Submitting needs the date for a grade that asks for it; a draft or an
+    # autosave does not (handle_grade_post clears this for those).
+    require_last_attendance = True
+
+    def __init__(self, *args, scale=None, final=False, term_start=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.final = final
+        self.term_start = term_start
         # The period's grade scale (services/scales.py); the formset resolves
         # it once and hands it to every row.
         scale = scale if scale is not None else scale_for_period(None)
@@ -36,6 +43,30 @@ class ClassSectionGradeForm(forms.Form):
         if current and current not in letters:
             letters = letters + [current]
         self.fields['grade'].choices = [('', '')] + [(g, g) for g in letters]
+        self.scale = scale
+        # Only a final grade goes to the SIS, so only it carries the date.
+        if final and scale.last_attendance_letters():
+            self.fields['last_attendance'] = last_attendance.last_attendance_field(
+                scale.last_attendance_letters())
+
+    def clean(self):
+        cleaned = super().clean()
+        if 'last_attendance' not in self.fields:
+            return cleaned
+        grade = cleaned.get('grade')
+        when = cleaned.get('last_attendance')
+        if not last_attendance.needs_date(self.scale, grade):
+            cleaned['last_attendance'] = None
+            return cleaned
+        if when is None:
+            if self.require_last_attendance:
+                self.add_error('last_attendance',
+                               f'Enter the last date of attendance for grade {grade}.')
+            return cleaned
+        problem = last_attendance.date_problem(when, self.term_start)
+        if problem:
+            self.add_error('last_attendance', problem)
+        return cleaned
 
 
 class ClassSectionGradeFormSet(BaseFormSet):
@@ -54,11 +85,20 @@ class ClassSectionGradeFormSet(BaseFormSet):
         self.period = period
         self.user = user
         self.scale = scale_for_period(period)
+        # period None (no grading periods) writes the registration grade,
+        # i.e. the final grade.
+        self.final = period is None or period.is_final
+        self.term_start = last_attendance.start_for_term(getattr(class_section, 'term', None))
         super().__init__(*args, **kwargs)
+        if self.final and self.scale.last_attendance_letters() and self.initial:
+            dates = last_attendance.stored(
+                [row.get('student_id') for row in self.initial if row.get('student_id')])
+            for row in self.initial:
+                row.setdefault('last_attendance', dates.get(row.get('student_id')))
 
     def get_form_kwargs(self, index):
         kwargs = super().get_form_kwargs(index)
-        kwargs['scale'] = self.scale
+        kwargs.update(scale=self.scale, final=self.final, term_start=self.term_start)
         return kwargs
 
     def _allowed_registration_ids(self):
@@ -103,3 +143,8 @@ class ClassSectionGradeFormSet(BaseFormSet):
             # and drift. period=None means no grading periods are configured,
             # which routes to the registration grade -- today's behaviour.
             save_mark(self.period, registration, grade, user=self.user)
+            if self.final:
+                # Kept only while the grade asks for it; any other grade clears it.
+                last_attendance.save_for_grade(
+                    registration, grade, data.get('last_attendance'), user=self.user,
+                    scale=self.scale)

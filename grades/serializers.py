@@ -49,6 +49,7 @@ class SISRegistrationSerializer(serializers.ModelSerializer):
     section_str = serializers.SerializerMethodField()
     crn = serializers.CharField(source='class_section.class_number')
     term_code = serializers.CharField(source='class_section.term.code')
+    last_attendance = serializers.SerializerMethodField()
     sync_status = serializers.SerializerMethodField()
     sent_grade = serializers.SerializerMethodField()
     last_sent_at = serializers.SerializerMethodField()
@@ -59,7 +60,7 @@ class SISRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentRegistration
         fields = ['id', 'student_name', 'student_psid', 'section_str', 'crn', 'term_code', 'grade',
-                  'sync_status', 'sent_grade', 'last_sent_at', 'last_sent_by',
+                  'last_attendance', 'sync_status', 'sent_grade', 'last_sent_at', 'last_sent_by',
                   'last_error', 'log_url']
         datatables_always_serialize = fields
 
@@ -75,6 +76,10 @@ class SISRegistrationSerializer(serializers.ModelSerializer):
     def get_section_str(self, obj):
         cs = obj.class_section
         return f'{cs.course.title} / {cs.section_number}'
+
+    def get_last_attendance(self, obj):
+        row = getattr(obj, 'final_grade_attendance', None)
+        return row.last_attendance_on.strftime('%m/%d/%Y') if row else ''
 
     def get_sync_status(self, obj):
         sync = self._sync(obj)

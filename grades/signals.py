@@ -27,20 +27,37 @@ def flag_grade_change(sender, instance, created, update_fields=None, **kwargs):
         return
     if update_fields is not None and 'grade' not in update_fields:
         return
+    refresh_mirroring(instance.pk, grade=instance.grade)
 
+
+def flag_last_attendance_change(sender, instance, **kwargs):
+    """The last date of attendance is sent with the grade, so changing or
+    clearing it after a send needs a re-send too."""
+    refresh_mirroring(instance.registration_id)
+
+
+def refresh_mirroring(registration_id, grade=None):
+    """SENT <-> NEEDS_MIRRORING for one registration, comparing the live grade
+    and last date of attendance with what the SIS last accepted."""
     from django.utils import timezone
 
-    from .models import GradeSISSync
+    from .models import FinalGradeAttendance, GradeSISSync
     from .services.sis_push import normalize_grade
 
     sync = GradeSISSync.objects.filter(
-        registration_id=instance.pk,
+        registration_id=registration_id,
         status__in=[GradeSISSync.SENT, GradeSISSync.NEEDS_MIRRORING],
     ).first()
     if sync is None:
         return
+    if grade is None:
+        grade = (StudentRegistration.objects.filter(pk=registration_id)
+                 .values_list('grade', flat=True).first())
+    when = (FinalGradeAttendance.objects.filter(registration_id=registration_id)
+            .values_list('last_attendance_on', flat=True).first())
 
-    changed = normalize_grade(instance.grade) != sync.sent_grade
+    changed = (normalize_grade(grade) != sync.sent_grade
+               or when != sync.sent_last_attendance)
     if changed and sync.status == GradeSISSync.SENT:
         sync.status = GradeSISSync.NEEDS_MIRRORING
         sync.grade_changed_at = timezone.now()
@@ -49,6 +66,17 @@ def flag_grade_change(sender, instance, created, update_fields=None, **kwargs):
         sync.status = GradeSISSync.SENT
         sync.grade_changed_at = None
         sync.save(update_fields=['status', 'grade_changed_at'])
+
+
+def _connect_last_attendance():
+    from .models import FinalGradeAttendance
+    post_save.connect(flag_last_attendance_change, sender=FinalGradeAttendance,
+                      dispatch_uid='grades_last_attendance_saved')
+    post_delete.connect(flag_last_attendance_change, sender=FinalGradeAttendance,
+                        dispatch_uid='grades_last_attendance_deleted')
+
+
+_connect_last_attendance()
 
 
 # submitted_grade()'s per-request memo (#12): started and dropped with each

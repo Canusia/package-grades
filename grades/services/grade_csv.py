@@ -17,8 +17,14 @@ def grades_csv_response(section, highschool_ids=None):
     filename = slugify(f'{section} grades') or 'grades'
     response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
     writer = csv.writer(response)
+    dates = grid.get('last_attendance_column')
     writer.writerow([safe_cell(c.header) for c in grid['columns']]
-                    + [safe_cell(p['period'].name) for p in grid['periods']])
+                    + [safe_cell(p['period'].name) for p in grid['periods']]
+                    + (['Last Date of Attendance'] if dates else []))
     for row in grid['rows']:
-        writer.writerow([safe_cell(v) for v in row['cells'] + row['marks']])
+        extra = []
+        if dates:
+            when = row.get('last_attendance')
+            extra = [when.strftime('%m/%d/%Y') if when else '']
+        writer.writerow([safe_cell(v) for v in row['cells'] + row['marks']] + extra)
     return response

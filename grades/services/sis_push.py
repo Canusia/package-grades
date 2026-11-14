@@ -263,7 +263,7 @@ def _current_grade(registration_id):
     return normalize_grade(value)
 
 
-def _record(sync, grade, result, user):
+def _record(sync, grade, result, user, last_attendance=None):
     """Persist the outcome of one push attempt onto `sync` and its attempt log.
 
     Called inside the per-row try in `run_push` (Ruling 1): if anything here
@@ -276,6 +276,7 @@ def _record(sync, grade, result, user):
     if result.success:
         sync.status = GradeSISSync.SENT
         sync.sent_grade = grade
+        sync.sent_last_attendance = last_attendance
         sync.last_sent_at = now
         sync.last_sent_by = user
         sync.last_error = ''
@@ -284,7 +285,9 @@ def _record(sync, grade, result, user):
             sync.sis_record_id = result.record_id
         # The grade may have been edited while the SIS call was in flight;
         # post_save saw the old sync state, so re-check here.
-        if _current_grade(sync.registration_id) != grade:
+        from .last_attendance import stored
+        current_date = stored([sync.registration_id]).get(sync.registration_id)
+        if _current_grade(sync.registration_id) != grade or current_date != last_attendance:
             sync.status = GradeSISSync.NEEDS_MIRRORING
             sync.grade_changed_at = now
     else:
@@ -294,6 +297,36 @@ def _record(sync, grade, result, user):
     GradeSISSyncAttempt.objects.create(
         sync=sync, attempted_at=now, attempted_by=user, grade=grade,
         success=result.success, error=result.error or '', log_url=result.log_url or '')
+
+
+def accepts_last_attendance(pusher):
+    """Whether the tenant's pusher takes `last_attendance` (ethos >= 1.5.0)."""
+    import inspect
+    try:
+        params = inspect.signature(pusher).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(p.name == 'last_attendance' or p.kind is p.VAR_KEYWORD for p in params)
+
+
+def _last_attendance_for(registration, grade, pusher):
+    """(kwargs for the pusher, error) for `registration`'s final grade.
+
+    A grade whose scale asks for a last date of attendance must have one, and
+    a pusher too old to send it must not send the grade without it.
+    """
+    from .last_attendance import needs_date, stored_for
+    from .scales import final_scale_for_registration
+    if not needs_date(final_scale_for_registration(registration), grade):
+        return {}, None
+    when = stored_for(registration)
+    if when is None:
+        return {}, (f'Grade {grade} needs a last date of attendance. '
+                    "Enter it on the class's grade page or the registration.")
+    if not accepts_last_attendance(pusher):
+        return {}, ('Update the ethos package to send last dates of attendance; '
+                    'this grade was not sent without it.')
+    return {'last_attendance': when}, None
 
 
 def run_push(registration_ids, user_id=None):
@@ -354,23 +387,30 @@ def run_push(registration_ids, user_id=None):
         # savepoint (Ruling 1), so a bad result (e.g. a non-UUID record id)
         # fails only this row's recording without reaching back into the
         # pusher call or forward into the next registration.
+        extra = {}   # the pusher's last_attendance, when the grade carries one
         if pusher is None:
             result = GradePushResult(False, error='No SIS grade pusher is configured.')
         elif not grade:
             result = GradePushResult(False, error='Grade is blank.')
         else:
             try:
-                result = pusher(
-                    registration, grade,
-                    existing_record_id=(
-                        str(sync.sis_record_id) if sync.sis_record_id else None))
+                extra, error = _last_attendance_for(registration, grade, pusher)
+                if error:
+                    result = GradePushResult(False, error=error)
+                else:
+                    result = pusher(
+                        registration, grade,
+                        existing_record_id=(
+                            str(sync.sis_record_id) if sync.sis_record_id else None),
+                        **extra)
             except Exception as exc:  # one bad registration must not stop the batch
                 logger.exception('Grade SIS push failed for registration %s', reg_id)
                 result = GradePushResult(False, error=f'Unexpected error: {exc}')
 
         try:
             with transaction.atomic():
-                _record(sync, grade, result, user)
+                _record(sync, grade, result, user,
+                        last_attendance=extra.get('last_attendance'))
             counts['sent' if result.success else 'failed'] += 1
         except Exception as exc:
             logger.exception('Recording SIS push outcome failed for registration %s', reg_id)

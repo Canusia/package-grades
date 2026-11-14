@@ -175,7 +175,8 @@
 
         form.addEventListener('change', function (event) {
             var target = event.target;
-            if (!target.matches('select[name$="-grade"]')) { return; }
+            // A grade, or the last date of attendance that goes with it.
+            if (!target.matches('select[name$="-grade"], input[name$="-last_attendance"]')) { return; }
             var row = target.closest('tr');
             dirtyRows.add(row);
             setRowStatus(row, 'Saving…', 'text-muted');

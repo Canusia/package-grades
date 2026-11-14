@@ -48,9 +48,9 @@ template rendered on the left of the card header, e.g. CE period controls).
                 {% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}
                 {% for p in grid.periods %}
                   {% if p.editable and row.form %}
-                    <td>{{ row.form.student_id }}{{ row.form.student }}{{ row.form.grade|as_crispy_field }}<small class="autosave-status text-muted" aria-live="polite"></small></td>
+                    <td>{{ row.form.student_id }}{{ row.form.student }}{{ row.form.grade|as_crispy_field }}{% if row.form.last_attendance %}{{ row.form.last_attendance }}{% for e in row.form.last_attendance.errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}{% endif %}<small class="autosave-status text-muted" aria-live="polite"></small></td>
                   {% else %}
-                    <td>{% with mark=row.marks|slice:forloop.counter|last %}{% if mark and mark != '-' %}{{ mark }}{% else %}<span class="text-muted">–</span>{% endif %}{% endwith %}</td>
+                    <td>{% with mark=row.marks|slice:forloop.counter|last %}{% if mark and mark != '-' %}{{ mark }}{% else %}<span class="text-muted">–</span>{% endif %}{% endwith %}{% if p.period.is_final and row.last_attendance %}<div class="small text-muted">Last attended {{ row.last_attendance|date:"m/d/Y" }}</div>{% endif %}</td>
                   {% endif %}
                 {% endfor %}
               </tr>

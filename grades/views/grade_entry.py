@@ -47,6 +47,19 @@ def _posted_registration_ids(request):
             if key.startswith('form-') and key.endswith('-student_id')}
 
 
+def _invalid_message(formset):
+    """The page message for a refused grade POST, naming each student whose
+    last date of attendance is missing or wrong."""
+    lines = []
+    for form in formset.forms:
+        for error in form.errors.get('last_attendance', []):
+            lines.append(f"{form.initial.get('student') or 'A student'}: {error}")
+    if not lines:
+        return 'Please choose a grade for every student before submitting.'
+    from django.utils.html import format_html_join
+    return format_html_join('', '<div>{}</div>', ((line,) for line in lines))
+
+
 def handle_grade_post(request, section, *, redirect_url, force_period=None, on_date=None,
                       on_saved=None, highschool_ids=None):
     """Save (draft/autosave) or submit grades for one period of ``section``.
@@ -95,12 +108,13 @@ def handle_grade_post(request, section, *, redirect_url, force_period=None, on_d
     if draft:
         for form in formset.forms:
             form.fields['grade'].required = False
+            form.require_last_attendance = False
 
     if not formset.is_valid():
         if autosave:
             return JsonResponse({'ok': False, 'error': 'Some grades could not be saved.',
                                  'errors': formset.errors}, status=400)
-        _note(request, 'Please choose a grade for every student before submitting.', ok=False)
+        _note(request, _invalid_message(formset), ok=False)
         return redirect(back)
 
     # CE (force_period) edits a submitted period in place: it stays submitted.

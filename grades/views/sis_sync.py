@@ -70,6 +70,8 @@ REGISTRATION_COLUMNS = [
     {'data': 'crn', 'name': 'class_section.class_number', 'title': 'CRN'},
     {'data': 'term_code', 'name': 'class_section.term.code', 'title': 'Term'},
     {'data': 'grade', 'name': 'grade', 'title': 'Grade'},
+    {'data': 'last_attendance', 'name': 'final_grade_attendance.last_attendance_on',
+     'title': 'Last Attendance'},
     {'data': 'sync_status', 'name': 'grade_sis_sync.status', 'title': 'Sync Status'},
     {'data': 'sent_grade', 'name': 'grade_sis_sync.sent_grade', 'title': 'Sent Grade'},
     {'data': 'last_sent_at', 'name': 'grade_sis_sync.last_sent_at', 'title': 'Last Sent'},
@@ -175,7 +177,7 @@ def registration_queryset(sync_status=None, term_ids=None, section_ids=None, crn
                   .order_by('-attempted_at').values('log_url')[:1])
     return (
         qs.select_related('student__user', 'class_section__course', 'class_section__term',
-                          'grade_sis_sync__last_sent_by')
+                          'grade_sis_sync__last_sent_by', 'final_grade_attendance')
         .annotate(last_log_url=Subquery(latest_log))
         .order_by('-grade_sis_sync__last_attempt_at', 'student__user__last_name')
     )

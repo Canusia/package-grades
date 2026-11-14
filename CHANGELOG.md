@@ -10,7 +10,36 @@
     Send Status filter (Has grades not sent / Has failed sends / Needs mirroring / All sent).
   - Registrations tab: new CRN column and CRN filter. The Section dropdown labels show the CRN.
   - The Registrations tab's default sort is found by column name, so new columns don't move it.
-  - No migrations.
+- **Grade scales are records, assigned per grading period.**
+  - New CE page **Classes → Grade Scales**: add, edit, duplicate and delete scales. Each grade
+    has GPA points (blank = not counted toward GPA), an order (drag to reorder) and an
+    "Asks for last date of attendance" flag.
+  - One default scale per campus, plus an optional deployment-wide default. A grading period
+    with no scale of its own uses the default; pick a period's scale on the term's Grading
+    Periods tab.
+  - Guards: a grade already entered for students can't be removed or renamed, and a period
+    can't switch to a scale that is missing grades already entered in it.
+  - The grade picker, the cis `grade_scale()` seam (the default scale) and the GPA reports
+    (each term's own final scale) now read the scales. The grades Settings page links to
+    Grade Scales instead of its inline scale editor; the saved setting value is kept.
+  - Migration `0010` copies each saved grades-setting scale into a default "Standard" scale.
+    Until a site has a scale record, the setting's list is used as before.
+- **Last date of attendance with a final grade** (EWU Zendesk #3222).
+  - When a final grade's scale entry asks for it, the instructor, HS admin and CE grade pages
+    show a date field under the grade. Required to submit; drafts and autosave may leave it
+    blank. It can't be in the future or before the academic year's high school start date.
+  - Stored on the new `FinalGradeAttendance`, shown on read-only grades and in the grades CSV.
+  - Grades → SIS sends it as `lastAttendance` (needs ethos >= 1.5.0). A flagged grade with no
+    date, or an older ethos, fails that row with a clear message instead of reaching the SIS.
+    Changing the date after a send marks the grade Needs Mirroring. New Last Attendance
+    column on the Registrations tab.
+
+### Upgrade
+
+- Run `migrate` (grades 0009, 0010) and `collectstatic`.
+- Check each campus's migrated "Standard" scale on Grade Scales.
+- To use last dates of attendance, tick "Asks for last date of attendance" on the grades that
+  need it (e.g. F), and install ethos >= 1.5.0.
 
 ## 1.5.0
 

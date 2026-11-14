@@ -90,6 +90,12 @@ def build_grid(section, *, post_url, next_url, allow_edit=True, force_period=Non
                if editable is not None and registrations else None)
     forms = list(formset.forms) if formset else [None] * len(registrations)
 
+    # Last date of attendance, shown with the final grade when its scale asks.
+    from .last_attendance import stored
+    final = next((p for p in periods if p.is_final), None)
+    show_dates = bool(final is not None and final.scale().last_attendance_letters())
+    dates = stored([r.id for r in registrations]) if show_dates else {}
+
     rows = []
     for reg, form in zip(registrations, forms):
         rows.append({
@@ -98,6 +104,7 @@ def build_grid(section, *, post_url, next_url, allow_edit=True, force_period=Non
             'sort': {c.key: c.value(reg) for c in columns if c.sortable},
             'marks': [marks[p.id].get(reg.id, '') for p in periods],
             'form': form,
+            'last_attendance': dates.get(reg.id),
         })
 
     settings = class_section_grades.from_db()
@@ -113,6 +120,7 @@ def build_grid(section, *, post_url, next_url, allow_edit=True, force_period=Non
         'message': message, 'roster_gate_ok': gate_ok, 'roster_gate_message': gate_message,
         'post_url': post_url, 'next_url': next_url, 'has_periods': bool(periods),
         'autosave': autosave,
+        'last_attendance_column': show_dates,
         'can_submit': highschool_ids is None,
         'editable_submitted': bool(editable is not None and statuses.get(editable.id)
                                    and statuses[editable.id].status == 'submitted'),
