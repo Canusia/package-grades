@@ -63,10 +63,23 @@ def current_campus():
 
 
 def _from_record(record):
+    # Sorted here, not with order_by(), so a prefetched entries cache is used.
     entries = tuple(
         ScaleEntry(e.grade, e.points, e.asks_last_attendance)
-        for e in record.entries.all().order_by('sequence', 'grade'))
+        for e in sorted(record.entries.all(), key=lambda e: (e.sequence, e.grade)))
     return Scale(name=record.name, entries=entries, record=record)
+
+
+def academic_year_has_campus():
+    """Whether cis's AcademicYear carries a campus. In-tree cis on some hosts
+    (nnu, csn, weber, westmoreland) has none, so campus paths must be guarded."""
+    from django.core.exceptions import FieldDoesNotExist
+    from cis.models.term import AcademicYear
+    try:
+        AcademicYear._meta.get_field('campus')
+    except FieldDoesNotExist:
+        return False
+    return True
 
 
 def _points(value):
@@ -81,12 +94,20 @@ def _points(value):
 def _saved_setting_value():
     """The grades setting row as saved, without from_db()'s filled-in
     defaults (it adds any missing key, which hides what was really saved)."""
+    import json
     from cis.models.settings import Setting
     from ..settings.class_section_grades import class_section_grades
     try:
         value = Setting.objects.get(key=class_section_grades.key).value
-    except Setting.DoesNotExist:
+    except Exception:
+        # No row, or a multi-campus lookup with no campus in context: the
+        # fallback is then the shipped default, never an error page.
         return {}
+    while isinstance(value, str):     # a value saved as a JSON string
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
     return value if isinstance(value, dict) else {}
 
 
@@ -131,30 +152,44 @@ def default_record(campus=None):
     return qs.filter(campus__isnull=True).first()
 
 
-def default_scale(campus=None):
-    """The default scale for `campus` (the current campus when omitted)."""
-    record = default_record(campus if campus is not None else current_campus())
-    return _from_record(record) if record is not None else setting_scale()
+def default_scale(campus=None, cache=None):
+    """The default scale for `campus` (the current campus when omitted).
+    `cache` (a dict) reuses lookups across one batch of calls."""
+    campus = campus if campus is not None else current_campus()
+    key = getattr(campus, 'pk', None)
+    if cache is not None and key in cache:
+        return cache[key]
+    record = default_record(campus)
+    if record is not None:
+        from django.db.models import prefetch_related_objects
+        prefetch_related_objects([record], 'entries')
+    scale = _from_record(record) if record is not None else setting_scale()
+    if cache is not None:
+        cache[key] = scale
+    return scale
 
 
-def scale_for_period(period):
+def scale_for_period(period, cache=None, term=None):
+    """`period`'s scale. With no period (a term with no grading periods), the
+    default for `term`'s campus."""
     if period is None:
-        return default_scale()
+        return default_scale(_campus_of_term(term), cache=cache)
     if period.grade_scale_id:
         return _from_record(period.grade_scale)
-    return default_scale(_campus_of_term(period.term))
+    return default_scale(_campus_of_term(period.term), cache=cache)
 
 
-def final_scale_for_term(term):
+def final_scale_for_term(term, cache=None):
     """The scale of `term`'s final period, else the term campus's default."""
     from ..models import GradingPeriod
     if term is None:
         return default_scale()
     final = (GradingPeriod.objects.filter(term=term, is_final=True)
-             .select_related('grade_scale', 'term__academic_year').first())
+             .select_related('grade_scale', 'term__academic_year')
+             .prefetch_related('grade_scale__entries').first())
     if final is not None:
-        return scale_for_period(final)
-    return default_scale(_campus_of_term(term))
+        return scale_for_period(final, cache=cache)
+    return default_scale(_campus_of_term(term), cache=cache)
 
 
 def final_scale_for_registration(registration):
@@ -168,11 +203,13 @@ def all_final_letters(term_ids=None):
     from ..models import GradingPeriod
     from .window import grade_terms
     term_ids = grade_terms() if term_ids is None else term_ids
-    letters = list(default_scale().letters())
+    cache = {}
+    letters = list(default_scale(cache=cache).letters())
     finals = (GradingPeriod.objects.filter(term_id__in=term_ids, is_final=True)
-              .select_related('grade_scale', 'term__academic_year'))
+              .select_related('grade_scale', 'term__academic_year')
+              .prefetch_related('grade_scale__entries'))
     for period in finals:
-        for letter in scale_for_period(period).letters():
+        for letter in scale_for_period(period, cache=cache).letters():
             if letter not in letters:
                 letters.append(letter)
     return letters
@@ -224,7 +261,9 @@ def periods_using(record):
     q = Q(grade_scale=record)
     if record.is_default:
         unset = Q(grade_scale__isnull=True)
-        if record.campus_id is not None:
+        if not academic_year_has_campus():
+            pass    # no campuses on terms: a default serves every unset period
+        elif record.campus_id is not None:
             unset &= Q(term__academic_year__campus_id=record.campus_id)
         else:
             # The deployment-wide default serves terms whose campus has no
@@ -256,13 +295,44 @@ def _period_marks(period):
     return out
 
 
+def _marks_in(periods):
+    """{letter: count} over `periods` in two queries: interim marks, then the
+    final grades of the final periods' terms."""
+    from django.db.models import Count
+    from cis.models.section import StudentRegistration
+    from ..models import PeriodGrade
+    periods = list(periods)
+    interim = [p.pk for p in periods if not p.is_final]
+    final_terms = [p.term_id for p in periods if p.is_final]
+    rows = []
+    if interim:
+        rows += PeriodGrade.objects.filter(period_id__in=interim).values(
+            'grade').annotate(n=Count('id')).order_by()
+    if final_terms:
+        rows += StudentRegistration.objects.filter(
+            class_section__term_id__in=final_terms).exclude(grade__isnull=True).values(
+            'grade').annotate(n=Count('id')).order_by()
+    out = {}
+    for row in rows:
+        letter = (row['grade'] or '').strip()
+        if letter and letter != '-':
+            out[letter] = out.get(letter, 0) + row['n']
+    return out
+
+
 def letters_in_use(record):
     """{letter: count} of marks in periods that use GradeScale `record`."""
-    out = {}
-    for period in periods_using(record):
-        for letter, n in _period_marks(period).items():
-            out[letter] = out.get(letter, 0) + n
-    return out
+    return _marks_in(periods_using(record))
+
+
+def stranded_by_default_swap(old_default, new_letters):
+    """{letter: count} of marks in periods that follow `old_default` only
+    because they have no scale of their own, which `new_letters` lacks."""
+    if old_default is None:
+        return {}
+    allowed = set(new_letters)
+    marks = _marks_in(periods_using(old_default).filter(grade_scale__isnull=True))
+    return {k: v for k, v in marks.items() if k not in allowed}
 
 
 def stranded_marks(period, new_letters):

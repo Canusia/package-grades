@@ -36,13 +36,18 @@ class LastAttendanceInput(forms.DateInput):
         return context
 
 
-def last_attendance_field(letters, required=False, help_text=''):
+def last_attendance_field(letters, required=False, help_text='', earliest=None):
     """The date field. Its label and help text live inside the widget, so
     they hide with it; the field's own label is blank so a crispy form does
-    not draw a second one outside."""
+    not draw a second one outside. The picker is limited to `earliest` (the
+    term's start, when known) through today."""
+    from django.utils import timezone
+    attrs = {'max': timezone.localdate().isoformat()}
+    if earliest:
+        attrs['min'] = earliest.isoformat()
     return forms.DateField(
         required=required, label='',
-        widget=LastAttendanceInput(letters=letters, help_text=help_text),
+        widget=LastAttendanceInput(letters=letters, help_text=help_text, attrs=attrs),
         input_formats=['%Y-%m-%d', '%m/%d/%Y'])
 
 
@@ -65,7 +70,9 @@ def date_problem(when, start=None, today=None):
     term's start date (see term_start), when known."""
     if when is None:
         return None
-    today = today or datetime.date.today()
+    if today is None:
+        from django.utils import timezone
+        today = timezone.localdate()   # the site's day, not the server's UTC one
     if when > today:
         return 'The last date of attendance cannot be in the future.'
     if start and when < start:
@@ -76,6 +83,16 @@ def date_problem(when, start=None, today=None):
 
 def needs_date(scale, grade):
     return bool(scale) and scale.asks_last_attendance(grade)
+
+
+def effective_date(registration_id, grade, scale):
+    """The date that goes with `grade`: the stored one while the grade asks
+    for it, else None. A row left over from an earlier grade, or from a scale
+    that no longer asks, is ignored, so it can neither be sent nor flag a
+    re-send."""
+    if not needs_date(scale, grade):
+        return None
+    return stored([registration_id]).get(registration_id)
 
 
 def stored(registration_ids):

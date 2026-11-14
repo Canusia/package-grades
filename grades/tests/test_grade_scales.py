@@ -157,3 +157,54 @@ class ReportScaleTests(GradesTestCase):
         gpa = gpa_by_group(regs, ['class_section__course__id'])
         self.assertAlmostEqual(gpa[(course.id,)], (4 + 3 + 5) / 3)
         self.assertEqual(report_letters(regs), ['A', 'B', 'P'])
+
+
+class ReviewFixLookupTests(GradesTestCase):
+    """v1.7.0 review: campus-less AcademicYear, query counts, migration parsing."""
+
+    def setUp(self):
+        factories.grades_setting(grades='A,B,C')
+        self.campus = scales.current_campus()
+
+    def test_periods_using_without_academic_year_campus(self):
+        from unittest.mock import patch
+        std = make_scale('Std', ['A'], campus=self.campus, is_default=True)
+        period = factories.period(factories.term(), 'Final', date(2020, 1, 1), date(2020, 2, 1))
+        with patch.object(scales, 'academic_year_has_campus', return_value=False):
+            self.assertIn(period, list(scales.periods_using(std)))
+
+    def test_all_final_letters_query_count_does_not_grow_with_periods(self):
+        make_scale('Std', ['A', 'F'], campus=self.campus, is_default=True)
+        other = make_scale('Other', ['P'], campus=self.campus)
+        terms = []
+        for i in range(6):
+            term = factories.term()
+            factories.period(term, 'Final', date(2020, 1, 1), date(2020, 2, 1), is_final=True,
+                             grade_scale=other if i % 2 else None)
+            terms.append(term.id)
+        with self.assertNumQueries(4):   # default + its entries, finals, their entries
+            self.assertEqual(scales.all_final_letters(terms), ['A', 'F', 'P'])
+
+    def test_letters_in_use_is_two_queries_plus_the_period_list(self):
+        from ..models import PeriodGrade
+        std = make_scale('Std', ['A', 'B'], campus=self.campus, is_default=True)
+        for _ in range(4):
+            term = factories.term()
+            mid = factories.period(term, 'Mid', date(2020, 1, 1), date(2020, 2, 1))
+            factories.period(term, 'Final', date(2020, 3, 1), date(2020, 4, 1), is_final=True)
+            reg = factories.registration(factories.section(term), grade='A')
+            PeriodGrade.objects.create(period=mid, registration=reg, grade='B')
+        with self.assertNumQueries(3):
+            self.assertEqual(scales.letters_in_use(std), {'A': 4, 'B': 4})
+
+    def test_migration_parser_matches_the_runtime_fallback(self):
+        parse = import_module(
+            f'{GradeScale.__module__.rsplit(".", 1)[0]}.migrations.0010_settings_to_grade_scales'
+        ).entries_from_setting
+        # The grades list wins over a disagreeing grade_scale, as in setting_scale().
+        value = {'grades': 'A,B,C', 'grade_scale': [{'grade': 'A', 'points': 4}]}
+        self.assertEqual([g for g, _ in parse(value)], ['A', 'B', 'C'])
+        # JSON text, even double-encoded, is read; oversize points and letters are dropped.
+        import json
+        text = json.dumps(json.dumps({'grades': 'A,TooLongGrade1', 'gpa_points': {'A': 400}}))
+        self.assertEqual(parse(text), [('A', None)])

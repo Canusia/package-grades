@@ -91,10 +91,16 @@ def build_grid(section, *, post_url, next_url, allow_edit=True, force_period=Non
     forms = list(formset.forms) if formset else [None] * len(registrations)
 
     # Last date of attendance, shown with the final grade when its scale asks.
-    from .last_attendance import stored
+    from .last_attendance import needs_date, stored
     final = next((p for p in periods if p.is_final), None)
-    show_dates = bool(final is not None and final.scale().last_attendance_letters())
-    dates = stored([r.id for r in registrations]) if show_dates else {}
+    final_scale = final.scale() if final is not None else None
+    show_dates = bool(final_scale and final_scale.last_attendance_letters())
+    dates = {}
+    if show_dates:
+        # Only a date the current grade asks for; a leftover one is not shown.
+        grade_of = {r.id: r.grade for r in registrations}
+        dates = {rid: when for rid, when in stored(list(grade_of)).items()
+                 if needs_date(final_scale, grade_of.get(rid))}
 
     rows = []
     for reg, form in zip(registrations, forms):

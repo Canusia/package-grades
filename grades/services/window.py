@@ -121,13 +121,15 @@ def chosen_term_id(request, available_ids):
 
 
 def grade_scale():
-    """The current campus's default grade scale as a list of grade strings.
+    """Every letter a final grade can hold, as a list of grade strings: the
+    default scale plus the final periods' scales in the grade terms.
 
-    Reached by cis through ``cis.integrations.grades.grade_scale()``. A
-    period's own scale comes from ``services.scales.scale_for_period``.
+    Reached by cis through ``cis.integrations.grades.grade_scale()`` (class
+    export counts). A period's own scale comes from
+    ``services.scales.scale_for_period``.
     """
-    from .scales import default_scale
-    return default_scale().letters()
+    from .scales import all_final_letters
+    return all_final_letters()
 
 
 def submitted_grade(registration):

@@ -1,5 +1,6 @@
 """CE forms for grade scales: the scale itself and its letters."""
 from django import forms
+from django.core.validators import MaxLengthValidator
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
 from ..models import GradeScale, GradeScaleEntry
@@ -19,13 +20,13 @@ class GradeScaleForm(forms.ModelForm):
     def __init__(self, *args, campus=None, **kwargs):
         self.campus = campus
         super().__init__(*args, **kwargs)
-        if self.instance.pk is None:
+        if self.instance._state.adding:
             self.instance.campus = campus
 
     def clean_name(self):
         name = (self.cleaned_data.get('name') or '').strip()
         clash = GradeScale.objects.filter(campus=self.instance.campus, name__iexact=name)
-        if self.instance.pk:
+        if not self.instance._state.adding:
             clash = clash.exclude(pk=self.instance.pk)
         if clash.exists():
             raise forms.ValidationError(f'There is already a grade scale named "{name}".')
@@ -33,7 +34,8 @@ class GradeScaleForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if self.instance.pk and self.instance.is_default and not cleaned.get('is_default'):
+        if (not self.instance._state.adding and self.instance.is_default
+                and not cleaned.get('is_default')):
             self.add_error('is_default', 'Make another scale the default instead; '
                                          'there must always be one.')
         if cleaned.get('is_default') and cleaned.get('is_active') is False:
@@ -59,6 +61,16 @@ class GradeScaleEntryForm(forms.ModelForm):
         # A blank grade removes the row (see the formset), so an added row
         # left empty is ignored rather than an error.
         self.fields['grade'].required = False
+        # A final grade is stored on cis's StudentRegistration.grade (10 chars).
+        self.fields['grade'].max_length = 10
+        self.fields['grade'].widget.attrs['maxlength'] = 10
+        self.fields['grade'].validators.append(MaxLengthValidator(10))
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get('grade') and cleaned.get('points') is not None and self.instance._state.adding:
+            self.add_error('grade', 'Enter a grade, or clear the points to drop this row.')
+        return cleaned
 
     def clean_grade(self):
         grade = (self.cleaned_data.get('grade') or '').strip()
@@ -80,6 +92,8 @@ class BaseGradeScaleEntryFormSet(BaseInlineFormSet):
     def _should_delete_form(self, form):
         if super()._should_delete_form(form):
             return True
+        if form.errors:      # e.g. points with no grade: report it, don't drop the row
+            return False
         data = getattr(form, 'cleaned_data', None) or {}
         return not data.get('grade')
 

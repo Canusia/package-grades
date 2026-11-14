@@ -50,14 +50,23 @@ def refresh_mirroring(registration_id, grade=None):
     ).first()
     if sync is None:
         return
+    from .services.last_attendance import effective_date
+    from .services.scales import final_scale_for_registration
+    registration = (StudentRegistration.objects.select_related('class_section__term')
+                    .filter(pk=registration_id).first())
+    if registration is None:
+        return
     if grade is None:
-        grade = (StudentRegistration.objects.filter(pk=registration_id)
-                 .values_list('grade', flat=True).first())
-    when = (FinalGradeAttendance.objects.filter(registration_id=registration_id)
-            .values_list('last_attendance_on', flat=True).first())
+        grade = registration.grade
+    grade = normalize_grade(grade)
+    # Only a date the grade asks for is ever sent, so only that one counts.
+    # No stored date means none either way; skip the scale lookup then.
+    when = None
+    if FinalGradeAttendance.objects.filter(registration_id=registration_id).exists():
+        when = effective_date(registration_id, grade,
+                              final_scale_for_registration(registration))
 
-    changed = (normalize_grade(grade) != sync.sent_grade
-               or when != sync.sent_last_attendance)
+    changed = grade != sync.sent_grade or when != sync.sent_last_attendance
     if changed and sync.status == GradeSISSync.SENT:
         sync.status = GradeSISSync.NEEDS_MIRRORING
         sync.grade_changed_at = timezone.now()

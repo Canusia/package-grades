@@ -47,7 +47,7 @@ class ClassSectionGradeForm(forms.Form):
         # Only a final grade goes to the SIS, so only it carries the date.
         if final and scale.last_attendance_letters():
             self.fields['last_attendance'] = last_attendance.last_attendance_field(
-                scale.last_attendance_letters())
+                scale.last_attendance_letters(), earliest=term_start)
 
     def clean(self):
         cleaned = super().clean()
@@ -59,13 +59,19 @@ class ClassSectionGradeForm(forms.Form):
             cleaned['last_attendance'] = None
             return cleaned
         if when is None:
-            if self.require_last_attendance:
+            if self.require_last_attendance and 'last_attendance' not in self.errors:
                 self.add_error('last_attendance',
                                f'Enter the last date of attendance for grade {grade}.')
             return cleaned
         problem = last_attendance.date_problem(when, self.term_start)
         if problem:
-            self.add_error('last_attendance', problem)
+            if self.require_last_attendance:
+                self.add_error('last_attendance', problem)
+            else:
+                # A draft or autosave keeps the grade and leaves the stored
+                # date as it was, so one half-typed date can't stop the
+                # whole roster from saving. Submit reports it.
+                cleaned['keep_last_attendance'] = True
         return cleaned
 
 
@@ -84,7 +90,7 @@ class ClassSectionGradeFormSet(BaseFormSet):
         self.class_section = class_section
         self.period = period
         self.user = user
-        self.scale = scale_for_period(period)
+        self.scale = scale_for_period(period, term=getattr(class_section, 'term', None))
         # period None (no grading periods) writes the registration grade,
         # i.e. the final grade.
         self.final = period is None or period.is_final
@@ -143,7 +149,7 @@ class ClassSectionGradeFormSet(BaseFormSet):
             # and drift. period=None means no grading periods are configured,
             # which routes to the registration grade -- today's behaviour.
             save_mark(self.period, registration, grade, user=self.user)
-            if self.final:
+            if self.final and not data.get('keep_last_attendance'):
                 # Kept only while the grade asks for it; any other grade clears it.
                 last_attendance.save_for_grade(
                     registration, grade, data.get('last_attendance'), user=self.user,

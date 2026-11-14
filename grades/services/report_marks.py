@@ -52,7 +52,8 @@ def _scales_by_term(registrations, period):
         scale = scale_for_period(period)
         return {tid: scale for tid in term_ids}
     terms = Term.objects.filter(pk__in=term_ids).select_related('academic_year').order_by('code')
-    return {t.pk: final_scale_for_term(t) for t in terms}
+    cache = {}
+    return {t.pk: final_scale_for_term(t, cache=cache) for t in terms}
 
 
 def report_letters(registrations, period=None):

@@ -8,6 +8,8 @@
     <li class="breadcrumb-item active" aria-current="page">{{ heading }}</li>
   </ol></nav>
   {% include 'cis/messages.html' %}
+  {% if not can_change %}<div class="alert alert-warning">This scale is shared by every campus. Only a superuser can change it;
+    use Duplicate on the Grade Scales list to make a copy for your campus.</div>{% endif %}
   {% if periods %}<div class="alert alert-info">Used by {{ periods }} grading period{{ periods|pluralize }}.
     Grades already entered for students can't be removed or renamed.</div>{% endif %}
   <form method="post" id="grade-scale-form">
@@ -30,6 +32,7 @@
           <tr class="scale-entry">
             <td class="text-muted drag-handle" style="cursor:move" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></td>
             <td>{{ f.id }}{{ f.sequence }}{{ f.grade }}{% for e in f.grade.errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}
+              {% for e in f.non_field_errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}{% for e in f.sequence.errors %}<div class="small text-danger">Order: {{ e }}</div>{% endfor %}
               {% if f.instance.pk and f.instance.grade in in_use %}<div class="small text-muted">In use</div>{% endif %}</td>
             <td>{{ f.points }}{% for e in f.points.errors %}<div class="small text-danger">{{ e }}</div>{% endfor %}</td>
             <td class="text-center">{{ f.asks_last_attendance }}</td>
@@ -50,7 +53,7 @@
       <button type="button" class="btn btn-sm btn-outline-primary" id="add-grade"><i class="fas fa-plus"></i> Add Grade</button>
     </div></div>
 
-    <button type="submit" class="btn btn-primary">Save Grade Scale</button>
+    {% if can_change %}<button type="submit" class="btn btn-primary">Save Grade Scale</button>{% endif %}
     <a class="btn btn-link" href="{% url 'grades_ce:grade_scales' %}">Cancel</a>
   </form>
 </main>

@@ -152,7 +152,7 @@ class grade_by_course(forms.Form):
 
         # Add count for each configured grade
         for grade in grade_list:
-            field_name = f'count_{grade.replace("+", "plus").replace("-", "minus").lower()}'
+            field_name = f'count_g{grade_list.index(grade)}'
             aggregations[field_name] = Count(
                 Case(When(period_mark=grade, then=1), output_field=IntegerField())
             )
@@ -203,7 +203,7 @@ class grade_by_course(forms.Form):
             # Grade counts
             grade_counts = {}
             for grade in grade_list:
-                field_name = f'count_{grade.replace("+", "plus").replace("-", "minus").lower()}'
+                field_name = f'count_g{grade_list.index(grade)}'
                 count = row_data.get(field_name, 0) or 0
                 grade_counts[grade] = count
                 row.append(count)

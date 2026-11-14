@@ -27,7 +27,7 @@
               <a class="btn btn-sm btn-outline-secondary" href="{% url 'grades_ce:edit_grade_scale' row.record.id %}"><i class="fas fa-edit"></i> Edit</a>
               <form method="post" action="{% url 'grades_ce:duplicate_grade_scale' row.record.id %}" class="d-inline">{% csrf_token %}
                 <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="far fa-copy"></i> Duplicate</button></form>
-              {% if not row.record.is_default and not row.periods %}
+              {% if row.can_change and not row.record.is_default and not row.periods %}
               <form method="post" action="{% url 'grades_ce:delete_grade_scale' row.record.id %}" class="d-inline"
                     onsubmit="return confirm('Delete this grade scale?');">{% csrf_token %}
                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash-alt"></i><span class="sr-only"> Delete</span></button></form>

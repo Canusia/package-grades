@@ -285,9 +285,12 @@ def _record(sync, grade, result, user, last_attendance=None):
             sync.sis_record_id = result.record_id
         # The grade may have been edited while the SIS call was in flight;
         # post_save saw the old sync state, so re-check here.
-        from .last_attendance import stored
-        current_date = stored([sync.registration_id]).get(sync.registration_id)
-        if _current_grade(sync.registration_id) != grade or current_date != last_attendance:
+        from .last_attendance import effective_date
+        from .scales import final_scale_for_registration
+        current = _current_grade(sync.registration_id)
+        current_date = effective_date(
+            sync.registration_id, current, final_scale_for_registration(sync.registration))
+        if current != grade or current_date != last_attendance:
             sync.status = GradeSISSync.NEEDS_MIRRORING
             sync.grade_changed_at = now
     else:

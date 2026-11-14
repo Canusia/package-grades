@@ -75,7 +75,7 @@ class GradingPeriodForm(forms.ModelForm):
         from django.db.models import Q
         from ..services.scales import default_scale, scales_for_campus
         field = self.fields['grade_scale']
-        current = self.instance.grade_scale_id if self.instance.pk else None
+        current = None if self.instance._state.adding else self.instance.grade_scale_id
         field.queryset = scales_for_campus(self._term_campus()).filter(
             Q(is_active=True) | Q(pk=current))
         field.required = False
@@ -86,7 +86,7 @@ class GradingPeriodForm(forms.ModelForm):
         """Refuse a scale that would drop grades already entered here."""
         from ..services.scales import default_scale, stranded_marks
         new = self.cleaned_data.get('grade_scale')
-        if not (self.instance and self.instance.pk) or new == self.instance.grade_scale:
+        if self.instance._state.adding or new == self.instance.grade_scale:
             return new
         letters = (new.entries.values_list('grade', flat=True) if new is not None
                    else default_scale(self._term_campus()).letters())

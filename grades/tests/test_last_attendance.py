@@ -130,6 +130,8 @@ class GridDisplayTests(_GridBase):
 
 class MirroringTests(SISFixtureMixin, GradesTestCase):
     def test_date_change_after_send_flags_and_revert_unflags(self):
+        make_scale('Std', ['A', 'F'], campus=current_campus(), is_default=True,
+                   last_attendance=['F'])
         reg = self.make_registration(self.make_section(), grade='F')
         last_attendance.set_last_attendance(reg, YESTERDAY)
         sync = GradeSISSync.objects.create(registration=reg, status='sent', sent_grade='F',
@@ -219,3 +221,43 @@ class PushTests(SISFixtureMixin, GradesTestCase):
         FinalGradeAttendance.objects.create(registration=reg, last_attendance_on=YESTERDAY)
         row = SISRegistrationSerializer(registration_queryset().get(pk=reg.pk)).data
         self.assertEqual(row['last_attendance'], f'{YESTERDAY:%m/%d/%Y}')
+
+
+class ReviewFixTests(_GridBase):
+    def test_widget_finds_its_input_by_id(self):
+        """Lazy tabs and modals load the grid with jQuery .html(), which runs
+        inline scripts from <head>; document.currentScript can't be used."""
+        html = str(self.formset(self.final).forms[0]['last_attendance'])
+        self.assertIn("getElementById('id_form\\u002D0\\u002Dlast_attendance')", html)
+        self.assertNotIn('currentScript', html)
+        from django.utils import timezone
+        self.assertIn(f'max="{timezone.localdate().isoformat()}"', html)
+
+    def test_draft_with_a_bad_date_saves_the_grade_and_keeps_the_stored_date(self):
+        last_attendance.set_last_attendance(self.reg, YESTERDAY)
+        fs = self.formset(self.final, [('F', date.today() + timedelta(days=3))], draft=True)
+        self.assertTrue(fs.is_valid(), fs.errors)
+        fs.save()
+        self.reg.refresh_from_db()
+        self.assertEqual(self.reg.grade, 'F')
+        self.assertEqual(last_attendance.stored_for(self.reg), YESTERDAY)
+
+
+class LeftoverDateTests(SISFixtureMixin, GradesTestCase):
+    def test_leftover_date_after_the_flag_is_removed_does_not_loop(self):
+        std = make_scale('Std', ['A', 'W'], campus=current_campus(), is_default=True,
+                         last_attendance=['W'])
+        reg = self.make_registration(self.make_section(), grade='W')
+        last_attendance.set_last_attendance(reg, YESTERDAY)
+        std.entries.filter(grade='W').update(asks_last_attendance=False)   # CE unticks W
+        pusher = MagicMock(return_value=GradePushResult(True, record_id=RECORD))
+        from unittest.mock import patch
+        with patch.object(sis_push, 'get_pusher', return_value=pusher):
+            sis_push.run_push([str(reg.id)])
+        sync = GradeSISSync.objects.get(registration=reg)
+        self.assertEqual(sync.status, GradeSISSync.SENT)
+        self.assertIsNone(sync.sent_last_attendance)
+        # A later save of the registration doesn't flip it back either.
+        reg.save()
+        sync.refresh_from_db()
+        self.assertEqual(sync.status, GradeSISSync.SENT)

@@ -5,11 +5,13 @@
 </div>
 <script>
 (function () {
-  var wrap = document.currentScript && document.currentScript.previousElementSibling;
+  // Found by the input's id, not the running script element: pages loaded with
+  // jQuery .html() (lazy tabs, modals) run this script from <head>.
+  var input = document.getElementById('{{ widget.attrs.id|escapejs }}');
+  var wrap = input && input.closest('.last-attendance-wrap');
   if (!wrap || wrap.dataset.lastAttendanceBound) { return; }
   wrap.dataset.lastAttendanceBound = '1';
   var letters = (wrap.dataset.lastAttendanceLetters || '').split(',').filter(Boolean);
-  var input = wrap.querySelector('input');
   // The grade picker in the same table row (grade grid) or, outside a table,
   // the same form (CE registration edit).
   var scope = wrap.closest('tr') || wrap.closest('form') || document;
@@ -17,7 +19,7 @@
   function sync() {
     var show = !!grade && letters.indexOf((grade.value || '').trim()) !== -1;
     wrap.style.display = show ? '' : 'none';
-    if (!show && input && input.value) {
+    if (!show && input.value) {
       input.value = '';
     }
   }

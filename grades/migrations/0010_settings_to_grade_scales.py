@@ -20,38 +20,52 @@ DEFAULT_SCALE = [
 
 
 def _points(value):
+    """Points as a 2-place Decimal, or None (not a number, or too big for
+    the 4-digit column)."""
     if value is None or isinstance(value, bool):
         return None
     try:
-        return Decimal(str(value)).quantize(Decimal('0.01'))
+        points = Decimal(str(value)).quantize(Decimal('0.01'))
     except (InvalidOperation, ValueError):
         return None
+    return points if abs(points) < 100 else None
 
 
-def entries_from_setting(value):
-    """[(grade, points)] from a saved setting value, oldest formats included."""
-    value = value or {}
-    if isinstance(value, str):
+def _as_dict(value):
+    while isinstance(value, str):     # saved as (possibly double-encoded) JSON text
         try:
             value = json.loads(value)
         except ValueError:
-            value = {}
-    scale = value.get('grade_scale')
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
+def entries_from_setting(value):
+    """[(grade, points)] from a saved setting value.
+
+    Same precedence as services.scales.setting_scale(), which the grade
+    picker used: letters from the `grades` list, else `grade_scale`, else
+    the shipped default; points from `grade_scale`, else `gpa_points`.
+    Letters longer than a final grade can hold (10) are skipped.
+    """
+    value = _as_dict(value)
+    scale = value.get('grade_scale') if isinstance(value.get('grade_scale'), list) else []
+    points = {str(i.get('grade') or '').strip(): i.get('points')
+              for i in scale if isinstance(i, dict)}
+    if not points and isinstance(value.get('gpa_points'), dict):
+        points = {str(k).strip(): v for k, v in value['gpa_points'].items()}
+    if str(value.get('grades') or '').strip():
+        letters = str(value['grades']).split(',')
+    elif points:
+        letters = list(points)
+    else:
+        return [(g, Decimal(p)) for g, p in DEFAULT_SCALE]
     out = []
-    if isinstance(scale, list) and scale:
-        for item in scale:
-            grade = str((item or {}).get('grade') or '').strip() if isinstance(item, dict) else ''
-            if grade and grade != '-' and grade not in [g for g, _ in out]:
-                out.append((grade, _points(item.get('points'))))
-    if not out:
-        points = value.get('gpa_points') if isinstance(value.get('gpa_points'), dict) else {}
-        for grade in str(value.get('grades') or '').split(','):
-            grade = grade.strip()
-            if grade and grade != '-' and grade not in [g for g, _ in out]:
-                out.append((grade, _points(points.get(grade))))
-    if not out:
-        out = [(g, Decimal(p)) for g, p in DEFAULT_SCALE]
-    return out
+    for grade in letters:
+        grade = str(grade).strip()
+        if grade and grade != '-' and len(grade) <= 10 and grade not in [g for g, _ in out]:
+            out.append((grade, _points(points.get(grade))))
+    return out or [(g, Decimal(p)) for g, p in DEFAULT_SCALE]
 
 
 def _setting_rows(connection, key):

@@ -234,3 +234,53 @@ class SettingsPageTests(GradesTestCase):
         self.assertIn(reverse('grades_ce:grade_scales'), html)
         # Not rendered, so not posted: saving the settings keeps the saved scale.
         self.assertNotIn('grade_scale', [i for i in layout if isinstance(i, str)])
+
+
+class ReviewFixPageTests(_CEBase):
+    def test_scale_name_is_escaped_in_messages(self):
+        data = {'name': '<img src=x onerror=alert(1)>', 'is_active': 'on',
+                **entries_post([{'grade': 'A'}])}
+        resp = self.client.post(reverse('grades_ce:add_grade_scale'), data, follow=True)
+        self.assertNotContains(resp, '<img src=x onerror=alert(1)>')
+        self.assertContains(resp, '&lt;img src=x onerror=alert(1)&gt;')
+
+    def test_grade_longer_than_a_final_grade_holds_is_refused(self):
+        data = {'name': 'Long', 'is_active': 'on', **entries_post([{'grade': 'In Progress'}])}
+        resp = self.client.post(reverse('grades_ce:add_grade_scale'), data)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(GradeScale.objects.filter(name='Long').exists())
+
+    def test_points_without_a_grade_are_an_error_not_dropped(self):
+        data = {'name': 'Pts', 'is_active': 'on',
+                **entries_post([{'grade': 'A'}, {'grade': '', 'points': '3'}])}
+        resp = self.client.post(reverse('grades_ce:add_grade_scale'), data)
+        self.assertContains(resp, 'Enter a grade, or clear the points')
+
+    def test_default_swap_refused_when_it_would_strand_marks(self):
+        old = make_scale('Std', ['A', 'B'], campus=self.campus, is_default=True)
+        term = f.term()
+        mid = f.period(term, 'Mid', date(2020, 1, 1), date(2020, 2, 1))
+        PeriodGrade.objects.create(period=mid, registration=f.registration(f.section(term)),
+                                   grade='B')
+        data = {'name': 'PNP', 'is_active': 'on', 'is_default': 'on',
+                **entries_post([{'grade': 'P'}, {'grade': 'NP'}])}
+        resp = self.client.post(reverse('grades_ce:add_grade_scale'), data)
+        self.assertContains(resp, 'already have grades this scale does not offer: B (1)')
+        old.refresh_from_db()
+        self.assertTrue(old.is_default)
+        # With the letter added, the swap goes through and keeps a history row.
+        data = {'name': 'PNP', 'is_active': 'on', 'is_default': 'on',
+                **entries_post([{'grade': 'P'}, {'grade': 'B'}])}
+        self.client.post(reverse('grades_ce:add_grade_scale'), data)
+        old.refresh_from_db()
+        self.assertFalse(old.is_default)
+        self.assertEqual(old.history.first().is_default, False)
+
+    def test_campus_staff_cannot_change_the_shared_scale_on_multi_campus(self):
+        if self.campus is None:
+            self.skipTest('single-campus host')
+        shared = make_scale('Shared', ['A'])
+        resp = self.client.post(reverse('grades_ce:delete_grade_scale', args=[shared.id]))
+        self.assertEqual(resp.status_code, 403)
+        resp = self.client.post(reverse('grades_ce:duplicate_grade_scale', args=[shared.id]))
+        self.assertEqual(GradeScale.objects.get(name='Copy of Shared').campus, self.campus)
