@@ -50,8 +50,15 @@ class Scale:
 
 
 def _campus_of_term(term):
+    """The id of `term`'s campus, or None. An id, not the Campus: reading
+    `.campus` would load the row once per term (an N+1 on multi-campus)."""
     ay = getattr(term, 'academic_year', None)
-    return getattr(ay, 'campus', None) if ay is not None else None
+    return getattr(ay, 'campus_id', None) if ay is not None else None
+
+
+def _campus_key(campus):
+    """A Campus or a campus id -> the id (None stays None)."""
+    return getattr(campus, 'pk', campus)
 
 
 def current_campus():
@@ -142,11 +149,13 @@ def setting_scale():
 
 
 def default_record(campus=None):
-    """The default GradeScale for `campus`, else the deployment-wide one, else None."""
+    """The default GradeScale for `campus` (a Campus or its id), else the
+    deployment-wide one, else None."""
     from ..models import GradeScale
     qs = GradeScale.objects.filter(is_default=True)
+    campus = _campus_key(campus)
     if campus is not None:
-        own = qs.filter(campus=campus).first()
+        own = qs.filter(campus_id=campus).first()
         if own is not None:
             return own
     return qs.filter(campus__isnull=True).first()
@@ -156,10 +165,10 @@ def default_scale(campus=None, cache=None):
     """The default scale for `campus` (the current campus when omitted).
     `cache` (a dict) reuses lookups across one batch of calls."""
     campus = campus if campus is not None else current_campus()
-    key = getattr(campus, 'pk', None)
+    key = _campus_key(campus)
     if cache is not None and key in cache:
         return cache[key]
-    record = default_record(campus)
+    record = default_record(key)
     if record is not None:
         from django.db.models import prefetch_related_objects
         prefetch_related_objects([record], 'entries')

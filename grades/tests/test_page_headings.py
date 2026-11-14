@@ -315,6 +315,10 @@ class CEPagesTests(_LoginHistoryOff, GradesTestCase):
         cls.ce = get_user_model().objects.create_user(
             username='ce21@example.com', email='ce21@example.com', password='x', is_staff=True)
         cls.ce.groups.add(Group.objects.get_or_create(name='ce')[0])
+        if getattr(cls, 'campus', None) is not None:
+            # CampusMiddleware refuses CE staff who don't process this campus.
+            from cis.signals.staff_campus import add_process_campuses
+            add_process_campuses(cls.ce, [cls.campus])
 
     def setUp(self):
         self.client.force_login(self.ce)
