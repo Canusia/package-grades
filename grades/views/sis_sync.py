@@ -128,8 +128,9 @@ def section_queryset(term_ids=None, highschool_ids=None, crn=None, send_status=N
         qs = qs.filter(term_id__in=term_ids)
     if highschool_ids:
         qs = qs.filter(highschool_id__in=highschool_ids)
-    if _crn(crn):
-        qs = qs.filter(class_number__istartswith=_crn(crn))
+    crn = _crn(crn)
+    if crn:
+        qs = qs.filter(class_number__istartswith=crn)
     sync = 'grade_sis_sync__status'
     qs = (
         qs.select_related('term', 'course', 'highschool', 'teacher__user')
@@ -157,8 +158,9 @@ def registration_queryset(sync_status=None, term_ids=None, section_ids=None, crn
         qs = qs.filter(class_section__term_id__in=term_ids)
     if section_ids:
         qs = qs.filter(class_section_id__in=section_ids)
-    if _crn(crn):
-        qs = qs.filter(class_section__class_number__istartswith=_crn(crn))
+    crn = _crn(crn)
+    if crn:
+        qs = qs.filter(class_section__class_number__istartswith=crn)
     wanted = [s for s in (sync_status or []) if s in SYNC_STATUS_FILTERS]
     if wanted:
         q = Q()
@@ -242,7 +244,7 @@ class SISRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().filter_queryset(queryset)
         # Never-sent rows have a NULL last_sent_at. Postgres defaults to
         # nulls-last for ASC but nulls-first for DESC, so the page's default
-        # order ([[8, 'desc']]) surfaces never-sent rows first. Rebuild this
+        # order (Last Sent, desc) surfaces never-sent rows first. Rebuild this
         # one column's ordering with nulls_last explicit in both directions,
         # but only when it's actually the column being sorted.
         direction = _datatables_sort_direction(self.request, LAST_SENT_NAME)

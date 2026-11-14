@@ -273,6 +273,13 @@ class SISSectionFeedTests(_SISPageBase):
         self.assertEqual(ids, {str(a.id)})
         ids = {r['id'] for r in self.sections_feed('&crn=%20%20')}
         self.assertEqual(ids, {str(a.id), str(b.id), str(c.id)})
+        # Spaces around the typed text are ignored, and case does not matter.
+        ids = {r['id'] for r in self.sections_feed('&crn=%20412%20')}
+        self.assertEqual(ids, {str(a.id), str(b.id)})
+        c.class_number = 'ab12'
+        c.save()
+        ids = {r['id'] for r in self.sections_feed('&crn=AB')}
+        self.assertEqual(ids, {str(c.id)})
 
     def test_section_rows_carry_crn(self):
         section = self.make_section()
@@ -440,6 +447,12 @@ class SISRegistrationFeedTests(_SISPageBase):
                                        f'columns[{i}][search][value]': '1'})
                 resp = self.client.get(url, params)
                 self.assertEqual(resp.status_code, 200, f'{table} search {col["data"]}')
+                # The page's own filters compose with DataTables' search and order.
+                for extra in ({'send_status': 'all_sent', 'crn': '7'},
+                              {'send_status': 'failed'}, {'crn': '7'}):
+                    resp = self.client.get(url, dict(params, **extra))
+                    self.assertEqual(resp.status_code, 200,
+                                     f'{table} {col["data"]} with {extra}')
 
 
 class SISActionTests(_SISPageBase):
