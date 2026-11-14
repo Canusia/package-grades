@@ -13,7 +13,8 @@ SOURCE = 'grades'
 
 EXPECTED = {
     'ce': {'classes/grades_sis_sync': ('Grades', 'grades_ce:sis_sync', 15),
-           'classes/grades_summary': ('Grade Summary', 'grades_ce:summary', 18)},
+           'classes/grades_summary': ('Grade Summary', 'grades_ce:summary', 18),
+           'classes/grade_scales': ('Grade Scales', 'grades_ce:grade_scales', 19)},
     'instructor': {'grades': ('Class Grades', 'instructor:grades', 35)},
     'student': {'grades': ('My Courses', 'student:grades', 35)},
 }

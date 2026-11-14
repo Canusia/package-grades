@@ -23,21 +23,26 @@ class LastAttendanceInput(forms.DateInput):
     template_name = 'grades/widgets/last_attendance_input.html'
     input_type = 'date'
 
-    def __init__(self, letters=(), attrs=None):
+    def __init__(self, letters=(), help_text='', attrs=None):
         attrs = {'class': 'form-control form-control-sm last-attendance-input', **(attrs or {})}
         super().__init__(attrs=attrs, format='%Y-%m-%d')
         self.letters = list(letters)
+        self.help_text = help_text
 
     def get_context(self, name, value, attrs):
         context = super().get_context(name, value, attrs)
         context['widget']['letters'] = ','.join(self.letters)
+        context['widget']['help_text'] = self.help_text
         return context
 
 
-def last_attendance_field(letters, required=False):
+def last_attendance_field(letters, required=False, help_text=''):
+    """The date field. Its label and help text live inside the widget, so
+    they hide with it; the field's own label is blank so a crispy form does
+    not draw a second one outside."""
     return forms.DateField(
-        required=required, label='Last date of attendance',
-        widget=LastAttendanceInput(letters=letters),
+        required=required, label='',
+        widget=LastAttendanceInput(letters=letters, help_text=help_text),
         input_formats=['%Y-%m-%d', '%m/%d/%Y'])
 
 

@@ -84,8 +84,8 @@ class ScaleEditTests(_CEBase):
         data = {'name': 'Final letters', 'description': '', 'is_active': 'on',
                 **entries_post([{'grade': 'A', 'points': '4'}, {'grade': 'F', 'points': '0', 'flag': True},
                                 {'grade': ''}])}   # an added row left blank is ignored
-        resp = self.client.post(reverse('grades_ce:add_grade_scale'), data)
-        self.assertEqual(resp.status_code, 302, getattr(resp, 'context', None) and resp.context['formset'].errors)
+        resp = self.client.post(reverse('grades_ce:add_grade_scale'), data, follow=True)
+        self.assertContains(resp, 'Saved grade scale "Final letters".')
         scale = GradeScale.objects.get(name='Final letters')
         self.assertEqual(scales.Scale(name='x', entries=tuple(
             scales.ScaleEntry(e.grade, e.points, e.asks_last_attendance)

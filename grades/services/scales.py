@@ -78,15 +78,44 @@ def _points(value):
         return None
 
 
-def setting_scale():
-    """The grades setting's list as a Scale (the pre-records behaviour)."""
+def _saved_setting_value():
+    """The grades setting row as saved, without from_db()'s filled-in
+    defaults (it adds any missing key, which hides what was really saved)."""
+    from cis.models.settings import Setting
     from ..settings.class_section_grades import class_section_grades
-    values = class_section_grades.from_db() or {}
-    points = values.get('gpa_points') if isinstance(values.get('gpa_points'), dict) else {}
+    try:
+        value = Setting.objects.get(key=class_section_grades.key).value
+    except Setting.DoesNotExist:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def setting_scale():
+    """The grades setting's list as a Scale (the pre-records behaviour).
+
+    Letters come from the saved `grades` list, as the grade picker always
+    read them; a row with only `grade_scale` uses that; a row with neither
+    gets the shipped default. Points come from `grade_scale`, else `gpa_points`.
+    """
+    from ..settings.class_section_grades import class_section_grades
+    values = _saved_setting_value()
+    scale = values.get('grade_scale') if isinstance(values.get('grade_scale'), list) else []
+    points = {str((i or {}).get('grade') or '').strip(): i.get('points')
+              for i in scale if isinstance(i, dict)}
+    if not points and isinstance(values.get('gpa_points'), dict):
+        points = values['gpa_points']
+    if str(values.get('grades') or '').strip():
+        letters = str(values['grades']).split(',')
+    elif scale:
+        letters = list(points)
+    else:
+        shipped = class_section_grades.get_default_grade_scale()
+        letters = [i['grade'] for i in shipped]
+        points = {i['grade']: i['points'] for i in shipped}
     entries = []
-    for grade in str(values.get('grades') or '').split(','):
-        grade = grade.strip()
-        if grade and grade not in [e.grade for e in entries]:
+    for grade in letters:
+        grade = str(grade).strip()
+        if grade and grade != '-' and grade not in [e.grade for e in entries]:
             entries.append(ScaleEntry(grade, _points(points.get(grade))))
     return Scale(name='Standard', entries=tuple(entries))
 

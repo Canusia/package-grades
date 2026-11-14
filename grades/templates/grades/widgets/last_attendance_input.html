@@ -1,6 +1,7 @@
 <div class="last-attendance-wrap mt-1" data-last-attendance-letters="{{ widget.letters }}">
   <label class="small text-muted mb-0" for="{{ widget.attrs.id }}">Last date of attendance</label>
   {% include "django/forms/widgets/input.html" %}
+  {% if widget.help_text %}<small class="form-text text-muted">{{ widget.help_text }}</small>{% endif %}
 </div>
 <script>
 (function () {
