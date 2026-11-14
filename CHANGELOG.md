@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.1
+
+### Fixed
+
+- Multi-campus: grade scale lookups use the campus id, so working out final-grade letters no
+  longer loads the campus once per final grading period (Grades → SIS, Banner check, reports).
+- `test_page_headings` assigns the test campus to its CE user, so it passes on multi-campus hosts.
+- No migrations.
+
 ## 1.7.0
 
 ### Added
