@@ -31,7 +31,7 @@ class SISSectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSection
-        fields = ['id', 'term_code', 'course_title', 'section_number',
+        fields = ['id', 'term_code', 'course_title', 'section_number', 'class_number',
                   'highschool_name', 'teacher_name', 'graded_count', 'sent_count',
                   'needs_mirroring_count', 'failed_count', 'not_sent_count']
         datatables_always_serialize = fields
@@ -47,6 +47,7 @@ class SISRegistrationSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     student_psid = serializers.SerializerMethodField()
     section_str = serializers.SerializerMethodField()
+    crn = serializers.CharField(source='class_section.class_number')
     term_code = serializers.CharField(source='class_section.term.code')
     sync_status = serializers.SerializerMethodField()
     sent_grade = serializers.SerializerMethodField()
@@ -57,7 +58,7 @@ class SISRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StudentRegistration
-        fields = ['id', 'student_name', 'student_psid', 'section_str', 'term_code', 'grade',
+        fields = ['id', 'student_name', 'student_psid', 'section_str', 'crn', 'term_code', 'grade',
                   'sync_status', 'sent_grade', 'last_sent_at', 'last_sent_by',
                   'last_error', 'log_url']
         datatables_always_serialize = fields

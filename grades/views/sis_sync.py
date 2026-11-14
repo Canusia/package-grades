@@ -31,6 +31,15 @@ from ..services.window import chosen_term_id, grade_terms, selected_term_ids
 SYNC_STATUS_FILTERS = {'not_sent', GradeSISSync.QUEUED, GradeSISSync.SENT,
                        GradeSISSync.FAILED, GradeSISSync.NEEDS_MIRRORING}
 
+# Sections tab "Send Status" filter: value -> condition on section_queryset's
+# count annotations (#3222).
+SEND_STATUS_FILTERS = {
+    'not_sent': Q(not_sent_count__gt=0),
+    'failed': Q(failed_count__gt=0),
+    'needs_mirroring': Q(needs_mirroring_count__gt=0),
+    'all_sent': Q(graded_count__gt=0, sent_count=F('graded_count')),
+}
+
 _CHECKBOX = {'data': 'id', 'title': '', 'orderable': False, 'searchable': False,
              'className': 'select-checkbox'}
 
@@ -39,6 +48,7 @@ SECTION_COLUMNS = [
     {'data': 'term_code', 'name': 'term.code', 'title': 'Term'},
     {'data': 'course_title', 'name': 'course.title', 'title': 'Course'},
     {'data': 'section_number', 'name': 'section_number', 'title': 'Section'},
+    {'data': 'class_number', 'name': 'class_number', 'title': 'CRN'},
     {'data': 'highschool_name', 'name': 'highschool.name', 'title': 'High School'},
     {'data': 'teacher_name', 'name': 'teacher.user.last_name,teacher.user.first_name',
      'title': 'Teacher'},
@@ -57,6 +67,7 @@ REGISTRATION_COLUMNS = [
     {'data': 'student_psid', 'name': 'student.user.psid', 'title': 'PSID'},
     {'data': 'section_str', 'name': 'class_section.course.title,class_section.section_number',
      'title': 'Section'},
+    {'data': 'crn', 'name': 'class_section.class_number', 'title': 'CRN'},
     {'data': 'term_code', 'name': 'class_section.term.code', 'title': 'Term'},
     {'data': 'grade', 'name': 'grade', 'title': 'Grade'},
     {'data': 'sync_status', 'name': 'grade_sis_sync.status', 'title': 'Sync Status'},
@@ -106,14 +117,21 @@ def sections_base():
     return ClassSection.objects.filter(term_id__in=grade_terms(), grade_status='submitted')
 
 
-def section_queryset(term_ids=None, highschool_ids=None):
+def _crn(value):
+    """The CRN filter text, stripped; '' means no filter."""
+    return (value or '').strip()
+
+
+def section_queryset(term_ids=None, highschool_ids=None, crn=None, send_status=None):
     qs = sections_base()
     if term_ids:
         qs = qs.filter(term_id__in=term_ids)
     if highschool_ids:
         qs = qs.filter(highschool_id__in=highschool_ids)
+    if _crn(crn):
+        qs = qs.filter(class_number__istartswith=_crn(crn))
     sync = 'grade_sis_sync__status'
-    return (
+    qs = (
         qs.select_related('term', 'course', 'highschool', 'teacher__user')
         .annotate(
             graded_count=_count(),
@@ -124,9 +142,12 @@ def section_queryset(term_ids=None, highschool_ids=None):
         )
         .order_by('term__code', 'course__title', 'section_number')
     )
+    if send_status in SEND_STATUS_FILTERS:
+        qs = qs.filter(SEND_STATUS_FILTERS[send_status])
+    return qs
 
 
-def registration_queryset(sync_status=None, term_ids=None, section_ids=None):
+def registration_queryset(sync_status=None, term_ids=None, section_ids=None, crn=None):
     """Graded roster registrations in the grade terms -- the Registrations tab.
 
     Also the scope `send_registrations` re-validates submitted ids against.
@@ -136,6 +157,8 @@ def registration_queryset(sync_status=None, term_ids=None, section_ids=None):
         qs = qs.filter(class_section__term_id__in=term_ids)
     if section_ids:
         qs = qs.filter(class_section_id__in=section_ids)
+    if _crn(crn):
+        qs = qs.filter(class_section__class_number__istartswith=_crn(crn))
     wanted = [s for s in (sync_status or []) if s in SYNC_STATUS_FILTERS]
     if wanted:
         q = Q()
@@ -166,8 +189,11 @@ class SISSectionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [_PusherRequired]
 
     def get_queryset(self):
+        params = self.request.query_params
         return section_queryset(term_ids=_uuid_params(self.request, 'term'),
-                                highschool_ids=_uuid_params(self.request, 'highschool'))
+                                highschool_ids=_uuid_params(self.request, 'highschool'),
+                                crn=params.get('crn'),
+                                send_status=params.get('send_status'))
 
 
 LAST_SENT_NAME = 'grade_sis_sync.last_sent_at'
@@ -209,7 +235,8 @@ class SISRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
         return registration_queryset(
             sync_status=[s for s in raw.split(',') if s],
             term_ids=_uuid_params(self.request, 'term'),
-            section_ids=_uuid_params(self.request, 'section'))
+            section_ids=_uuid_params(self.request, 'section'),
+            crn=self.request.query_params.get('crn'))
 
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)

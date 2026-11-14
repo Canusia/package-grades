@@ -28,18 +28,33 @@
       <div class="card border-top-0"><div class="card-body">
         <div class="card mb-3"><div class="card-body bg-gray-200">
           <div class="form-row">
-            <div class="col-md-4 mb-2">
+            <div class="col-md-3 mb-2">
               <label for="sis-sections-term-filter">Term</label>
               <select id="sis-sections-term-filter" class="form-control sis-sections-filter">
                 <option value=""{% if not term_choice %} selected{% endif %}>All grade terms</option>
                 {% for term in terms %}<option value="{{ term.id }}"{% if term.id|stringformat:"s" == term_choice %} selected{% endif %}>{{ term.code }} {{ term.label }}</option>{% endfor %}
               </select>
             </div>
-            <div class="col-md-4 mb-2">
+            <div class="col-md-3 mb-2">
               <label for="sis-sections-highschool-filter">High School</label>
               <select id="sis-sections-highschool-filter" class="form-control sis-sections-filter">
                 <option value="">All high schools</option>
                 {% for hs in highschools %}<option value="{{ hs.id }}">{{ hs.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3 mb-2">
+              <label for="sis-sections-crn-filter">CRN</label>
+              <input type="search" id="sis-sections-crn-filter" class="form-control sis-sections-filter"
+                     placeholder="Starts with…" autocomplete="off">
+            </div>
+            <div class="col-md-3 mb-2">
+              <label for="sis-sections-send-status-filter">Send Status</label>
+              <select id="sis-sections-send-status-filter" class="form-control sis-sections-filter">
+                <option value="">All</option>
+                <option value="not_sent">Has grades not sent</option>
+                <option value="failed">Has failed sends</option>
+                <option value="needs_mirroring">Needs mirroring</option>
+                <option value="all_sent">All sent</option>
               </select>
             </div>
           </div>
@@ -55,7 +70,7 @@
       <div class="card border-top-0"><div class="card-body">
         <div class="card mb-3"><div class="card-body bg-gray-200">
           <div class="form-row">
-            <div class="col-md-4 mb-2">
+            <div class="col-md-3 mb-2">
               <label for="sis-status-filter">Sync Status</label>
               <select id="sis-status-filter" class="form-control sis-registrations-filter" multiple>
                 <option value="needs_mirroring" selected>Needs Mirroring</option>
@@ -65,19 +80,24 @@
                 <option value="sent">Sent</option>
               </select>
             </div>
-            <div class="col-md-4 mb-2">
+            <div class="col-md-3 mb-2">
               <label for="sis-registrations-term-filter">Term</label>
               <select id="sis-registrations-term-filter" class="form-control sis-registrations-filter">
                 <option value=""{% if not term_choice %} selected{% endif %}>All grade terms</option>
                 {% for term in terms %}<option value="{{ term.id }}"{% if term.id|stringformat:"s" == term_choice %} selected{% endif %}>{{ term.code }} {{ term.label }}</option>{% endfor %}
               </select>
             </div>
-            <div class="col-md-4 mb-2">
+            <div class="col-md-3 mb-2">
               <label for="sis-registrations-section-filter">Section</label>
               <select id="sis-registrations-section-filter" class="form-control sis-registrations-filter">
                 <option value="">All sections</option>
-                {% for cs in filter_sections %}<option value="{{ cs.id }}">{{ cs.term.code }} {{ cs.course.title }} / {{ cs.section_number }}</option>{% endfor %}
+                {% for cs in filter_sections %}<option value="{{ cs.id }}">{{ cs.term.code }} {{ cs.course.title }} / {{ cs.section_number }} (CRN {{ cs.class_number }})</option>{% endfor %}
               </select>
+            </div>
+            <div class="col-md-3 mb-2">
+              <label for="sis-registrations-crn-filter">CRN</label>
+              <input type="search" id="sis-registrations-crn-filter" class="form-control sis-registrations-filter"
+                     placeholder="Starts with…" autocomplete="off">
             </div>
           </div>
         </div></div>
@@ -159,11 +179,20 @@ jQuery(function ($) {
 
   function val(sel) { var v = $(sel).val(); return Array.isArray(v) ? v.join(',') : (v || ''); }
 
+  {% comment %}Default sort by column name, not position, so adding a column never shifts it.{% endcomment %}
+  function colIndex(id, name, fallback) {
+    var cols = JSON.parse(document.getElementById(id).textContent);
+    for (var i = 0; i < cols.length; i++) { if (cols[i].name === name) return i; }
+    return fallback;
+  }
+
   $('#sis-sections-table').DataTable({
     processing: true, serverSide: true, rowId: 'id',
     ajax: { url: '{{ sections_url|escapejs }}', data: function (d) {
       d.term = val('#sis-sections-term-filter');
       d.highschool = val('#sis-sections-highschool-filter');
+      d.crn = val('#sis-sections-crn-filter');
+      d.send_status = val('#sis-sections-send-status-filter');
     } },
     order: [[1, 'asc']], lengthMenu: [25, 50, 100], dom: 'Bfrtip',
     select: { style: 'multi', selector: 'td:first-child' },
@@ -177,8 +206,9 @@ jQuery(function ($) {
       d.sync_status = val('#sis-status-filter');
       d.term = val('#sis-registrations-term-filter');
       d.section = val('#sis-registrations-section-filter');
+      d.crn = val('#sis-registrations-crn-filter');
     } },
-    order: [[8, 'desc']], lengthMenu: [25, 50, 100], dom: 'Bfrtip',
+    order: [[colIndex('sis-registrations-columns', 'grade_sis_sync.last_sent_at', 1), 'desc']], lengthMenu: [25, 50, 100], dom: 'Bfrtip',
     select: { style: 'multi', selector: 'td:first-child' },
     buttons: actionButtons(bulkActions.registrations).concat([
       { extend: 'csv', text: '<i class="fas fa-file-csv"></i>&nbsp;CSV (this page)',
@@ -190,12 +220,18 @@ jQuery(function ($) {
     columns: columns('sis-registrations-columns')
   });
 
-  $('.sis-sections-filter').on('change', function () {
-    $('#sis-sections-table').DataTable().ajax.reload();
-  });
-  $('.sis-registrations-filter').on('change', function () {
-    $('#sis-registrations-table').DataTable().ajax.reload();
-  });
+  {% comment %}Selects reload on change; the CRN boxes reload as you type, debounced.{% endcomment %}
+  function bindFilters(cls, table) {
+    var timer = null;
+    function reload() { $(table).DataTable().ajax.reload(); }
+    $('select.' + cls).on('change', reload);
+    $('input.' + cls).on('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(reload, 300);
+    });
+  }
+  bindFilters('sis-sections-filter', '#sis-sections-table');
+  bindFilters('sis-registrations-filter', '#sis-registrations-table');
   $('a[data-toggle="tab"]').on('shown.bs.tab', function () {
     $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
   });

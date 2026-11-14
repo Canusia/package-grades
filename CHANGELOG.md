@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Grades → SIS: CRN and send-status filters** (EWU Zendesk #3222).
+  - Sections tab: new CRN column, a CRN filter (matches the start of the CRN), and a
+    Send Status filter (Has grades not sent / Has failed sends / Needs mirroring / All sent).
+  - Registrations tab: new CRN column and CRN filter. The Section dropdown labels show the CRN.
+  - The Registrations tab's default sort is found by column name, so new columns don't move it.
+  - No migrations.
+
 ## 1.5.0
 
 - Grades pages follow renamed menu items (#21): instructor Class Grades (list + class grade page), student My Courses, CE Grades → SIS and Grade Summary.

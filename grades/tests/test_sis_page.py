@@ -107,6 +107,10 @@ class SISPageTests(_SISPageBase):
         self.assertIn('id="sis-registrations-term-filter"', html)
         self.assertIn('id="sis-registrations-section-filter"', html)
         self.assertIn('id="sis-status-filter"', html)
+        self.assertIn('id="sis-sections-crn-filter"', html)
+        self.assertIn('id="sis-sections-send-status-filter"', html)
+        self.assertIn('id="sis-registrations-crn-filter"', html)
+        self.assertIn(f'(CRN {hs_section.class_number})', html)
         self.assertIn(f'value="{self.term.id}"', html)
         self.assertIn(f'value="{self.highschool.id}"', html)
         self.assertIn(f'value="{hs_section.id}"', html)
@@ -251,6 +255,62 @@ class SISSectionFeedTests(_SISPageBase):
         self.assertEqual(ids, {str(at_hs.id), str(elsewhere.id)})
 
 
+    def test_filters_by_crn_prefix(self):
+        """?crn= matches class_number by prefix, case-insensitively (#3222)."""
+        a = self.make_section()
+        a.class_number = '41234'
+        a.save()
+        b = self.make_section()
+        b.class_number = '41299'
+        b.save()
+        c = self.make_section()
+        c.class_number = '50001'
+        c.save()
+
+        ids = {r['id'] for r in self.sections_feed('&crn=412')}
+        self.assertEqual(ids, {str(a.id), str(b.id)})
+        ids = {r['id'] for r in self.sections_feed('&crn=41234')}
+        self.assertEqual(ids, {str(a.id)})
+        ids = {r['id'] for r in self.sections_feed('&crn=%20%20')}
+        self.assertEqual(ids, {str(a.id), str(b.id), str(c.id)})
+
+    def test_section_rows_carry_crn(self):
+        section = self.make_section()
+        row = self.sections_feed()[0]
+        self.assertEqual(row['class_number'], section.class_number)
+
+    def test_filters_by_send_status(self):
+        """?send_status= narrows on the per-section counts (#3222)."""
+        unsent = self.make_section()
+        self.make_registration(unsent)
+
+        failed = self.make_section()
+        GradeSISSync.objects.create(registration=self.make_registration(failed), status='failed')
+
+        mirroring = self.make_section()
+        GradeSISSync.objects.create(
+            registration=self.make_registration(mirroring), status='needs_mirroring')
+
+        all_sent = self.make_section()
+        for _ in range(2):
+            GradeSISSync.objects.create(registration=self.make_registration(all_sent), status='sent')
+
+        ungraded = self.make_section()
+        self.make_registration(ungraded, grade='-')
+
+        def ids(value):
+            return {r['id'] for r in self.sections_feed(f'&send_status={value}')}
+
+        self.assertEqual(ids('not_sent'), {str(unsent.id)})
+        self.assertEqual(ids('failed'), {str(failed.id)})
+        self.assertEqual(ids('needs_mirroring'), {str(mirroring.id)})
+        self.assertEqual(ids('all_sent'), {str(all_sent.id)})
+        # Unknown or blank values filter nothing.
+        everything = {str(s.id) for s in (unsent, failed, mirroring, all_sent, ungraded)}
+        self.assertEqual(ids(''), everything)
+        self.assertEqual(ids('junk'), everything)
+
+
 class SISRegistrationFeedTests(_SISPageBase):
     def test_registration_feed_filters_by_sync_status(self):
         section = self.make_section()
@@ -292,6 +352,20 @@ class SISRegistrationFeedTests(_SISPageBase):
 
         ids = {r['id'] for r in self.registrations_feed('&section=junk&term=junk')}
         self.assertEqual(ids, {str(in_first.id), str(in_second.id)})
+
+    def test_registration_feed_filters_by_crn_and_carries_it(self):
+        first = self.make_section()
+        first.class_number = '41234'
+        first.save()
+        second = self.make_section()
+        second.class_number = '50001'
+        second.save()
+        in_first = self.make_registration(first)
+        self.make_registration(second)
+
+        rows = self.registrations_feed('&crn=412')
+        self.assertEqual({r['id'] for r in rows}, {str(in_first.id)})
+        self.assertEqual(rows[0]['crn'], '41234')
 
     def test_last_sent_at_is_local_time(self):
         reg = self.make_registration(self.make_section())
